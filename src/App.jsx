@@ -898,25 +898,20 @@ const CommandPalette = ({ isOpen, onClose, pages, currentPage, onNavigate }) => 
 // PAGES: DASHBOARD
 // ============================================================================
 
-const DashboardPage = ({ employees, events, payroll }) => {
+const DashboardPage = ({ employees = [], events = [], locations = [], shifts = [], availability = {}, products = [], stock = {}, historicSales = [] }) => {
   const upcomingEvents = (events || [])
-    .filter((e) => new Date(e.date) >= new Date())
+    .filter((e) => new Date(e.start_date) >= new Date())
     .slice(0, 5);
 
   const totalStaff = (employees || []).length;
   const staffTomorrow = (events || []).filter(
     (e) =>
-      new Date(e.date).toDateString() ===
+      new Date(e.start_date).toDateString() ===
       new Date(new Date().getTime() + 86400000).toDateString()
   ).length;
 
-  const payrollThisMonth = (payroll || [])
-    .filter((p) => {
-      const pDate = new Date(p.date);
-      const now = new Date();
-      return pDate.getMonth() === now.getMonth() && pDate.getFullYear() === now.getFullYear();
-    })
-    .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
+  // Payroll summary — pay_records not yet loaded in this phase, show placeholder
+  const payrollThisMonth = 0;
 
   return (
     <div className="space-y-6">
@@ -974,7 +969,7 @@ const DashboardPage = ({ employees, events, payroll }) => {
                       {event.name}
                     </p>
                     <p className="text-sm" style={{ color: "rgba(224,230,255,0.6)" }}>
-                      {formatDate(event.date)} at {formatTime(event.start_time)}
+                      {formatDate(event.start_date)} at {formatTime(event.start_time)}
                     </p>
                   </div>
                   <Badge color="success">{event.staff_assigned || 0} staff</Badge>
@@ -992,7 +987,7 @@ const DashboardPage = ({ employees, events, payroll }) => {
 // PAGES: CALENDAR VIEW
 // ============================================================================
 
-const CalendarViewPage = ({ events = [], employees = [], employeeSkills = [] }) => {
+const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations = [], availability = {}, employeeSkills = [], skills = [] }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState("month"); // month, week, day
   const [selectedDay, setSelectedDay] = useState(new Date());
@@ -1013,7 +1008,7 @@ const CalendarViewPage = ({ events = [], employees = [], employeeSkills = [] }) 
   const emptyDays = Array.from({ length: firstDay }, (_, i) => null);
 
   const getEventsForDate = (date) => {
-    return events.filter((e) => e.date === date.toISOString().split("T")[0]);
+    return events.filter((e) => e.start_date === date.toISOString().split("T")[0]);
   };
 
   const handlePrevMonth = () => {
@@ -1220,7 +1215,7 @@ const CalendarViewPage = ({ events = [], employees = [], employeeSkills = [] }) 
 // PAGES: SHIFT BUILDER
 // ============================================================================
 
-const ShiftBuilderPage = ({ events = [], employees = [], roleRequirements = [] }) => {
+const ShiftBuilderPage = ({ events = [], employees = [], shifts = [], locations = [], roleRequirements = [] }) => {
   const [selectedEvent, setSelectedEvent] = useState(events[0]?.id || "");
   const [shifts, setShifts] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -1274,7 +1269,7 @@ const ShiftBuilderPage = ({ events = [], employees = [], roleRequirements = [] }
             }}
             options={events.map((e) => ({
               value: e.id,
-              label: `${e.name} - ${formatDate(e.date)}`,
+              label: `${e.name} - ${formatDate(e.start_date)}`,
             }))}
             placeholder="Choose an event..."
           />
@@ -1416,7 +1411,7 @@ const ShiftBuilderPage = ({ events = [], employees = [], roleRequirements = [] }
 // PAGES: ROLE REQUIREMENTS
 // ============================================================================
 
-const RoleRequirementsPage = ({ events = [], roleRequirements = [] }) => {
+const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employees = [], roleRequirements = [] }) => {
   const [selectedEvent, setSelectedEvent] = useState(events[0]?.id || "");
   const [roles, setRoles] = useState([]);
   const [showAddRole, setShowAddRole] = useState(false);
@@ -1474,7 +1469,7 @@ const RoleRequirementsPage = ({ events = [], roleRequirements = [] }) => {
           onChange={(e) => setSelectedEvent(e.target.value)}
           options={events.map((e) => ({
             value: e.id,
-            label: `${e.name} - ${formatDate(e.date)}`,
+            label: `${e.name} - ${formatDate(e.start_date)}`,
           }))}
           placeholder="Choose an event..."
         />
@@ -1950,13 +1945,13 @@ const AvailabilityPage = ({ employees = [] }) => {
 // PAGES: PAYROLL
 // ============================================================================
 
-const PayrollPage = ({ employees = [], payroll = [] }) => {
+const PayrollPage = ({ employees = [], events = [], locations = [], shifts = [] }) => {
   const [selectedEmployee, setSelectedEmployee] = useState(employees[0]?.id || "");
   const [selectedPeriod, setSelectedPeriod] = useState(
     new Date().toISOString().split("T")[0]
   );
 
-  const employeePayroll = payroll.filter((p) => p.employee_id === selectedEmployee);
+  const employeePayroll = []; // pay_records integration pending — Phase 2
   const periodPayroll = employeePayroll.filter(
     (p) => p.date.substring(0, 7) === selectedPeriod.substring(0, 7)
   );
@@ -2071,7 +2066,7 @@ const PayrollPage = ({ employees = [], payroll = [] }) => {
 // PAGES: REPORTS
 // ============================================================================
 
-const ReportsPage = ({ employees = [], events = [], payroll = [] }) => {
+const ReportsPage = ({ employees = [], events = [], shifts = [], historicSales = [], products = [] }) => {
   const staffTrendData = [
     { month: "Jan", staff: 12, shifts: 45 },
     { month: "Feb", staff: 14, shifts: 52 },
@@ -2102,7 +2097,7 @@ const ReportsPage = ({ employees = [], events = [], payroll = [] }) => {
         <StatCard
           icon={DollarSign}
           label="YTD Payroll"
-          value={currency(payroll.reduce((sum, p) => sum + parseFloat(p.amount || 0), 0))}
+          value={currency(0)} // pay_records integration pending
           color="success"
         />
         <StatCard
@@ -2182,11 +2177,93 @@ const ReportsPage = ({ employees = [], events = [], payroll = [] }) => {
 };
 
 // ============================================================================
+// PAGES: INVENTORY
+// ============================================================================
+
+const InventoryProductsPage = ({ products = [], stock = {} }) => {
+  const totalStockUnits = Object.values(stock).reduce((a, b) => a + b, 0);
+  const totalStockValue = products.reduce((sum, p) => sum + (stock[p.id] || 0) * (p.cost || 0), 0);
+  return (
+    <div>
+      <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Products</h1>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 16, marginTop: 20 }}>
+        <StatCard title="Total Products" value={products.length} icon={Package} color={BRAND.primary} />
+        <StatCard title="Stock Units" value={totalStockUnits} icon={Package} color={BRAND.success} />
+        <StatCard title="Stock Value" value={currency(totalStockValue)} icon={DollarSign} color={BRAND.warning} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16, marginTop: 20 }}>
+        {products.map(p => {
+          const margin = p.retail > 0 ? (((p.retail - p.cost) / p.retail) * 100).toFixed(0) : 0;
+          return (
+            <Card key={p.id} title={p.name} icon={Package}>
+              <div style={{ fontSize: 13, color: "rgba(224,230,255,0.7)" }}>
+                <p>SKU: {p.sku}</p>
+                <p style={{ marginTop: 4 }}>Cost: {currency(p.cost)} | Retail: {currency(p.retail)}</p>
+                <p style={{ color: BRAND.primary, marginTop: 4 }}>Margin: {margin}% | Stock: {stock[p.id] || 0}</p>
+              </div>
+            </Card>
+          );
+        })}
+        {products.length === 0 && <EmptyState icon={Package} title="No products" description="Add products to get started" />}
+      </div>
+    </div>
+  );
+};
+
+const InventoryStockPage = ({ products = [], stock = {}, distributions = [] }) => (
+  <div>
+    <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Stock & Distribution</h1>
+    <Card title="Stock Levels" icon={Package} style={{ marginTop: 20 }}>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
+              <th style={{ padding: 8, textAlign: "left", color: BRAND.primary }}>Product</th>
+              <th style={{ padding: 8, textAlign: "center", color: BRAND.primary }}>On Hand</th>
+              <th style={{ padding: 8, textAlign: "center", color: BRAND.primary }}>Distributed</th>
+              <th style={{ padding: 8, textAlign: "center", color: BRAND.primary }}>Returned</th>
+            </tr>
+          </thead>
+          <tbody>
+            {products.map(p => {
+              const onHand = stock[p.id] || 0;
+              const distrib = distributions.filter(d => d.product_id === p.id).reduce((sum, d) => sum + (d.qty_sent || 0), 0);
+              const returned = distributions.filter(d => d.product_id === p.id).reduce((sum, d) => sum + (d.qty_returned || 0), 0);
+              return (
+                <tr key={p.id} style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
+                  <td style={{ padding: 8, color: BRAND.text }}>{p.name}</td>
+                  <td style={{ padding: 8, textAlign: "center", color: BRAND.primary }}>{onHand}</td>
+                  <td style={{ padding: 8, textAlign: "center", color: "rgba(224,230,255,0.7)" }}>{distrib}</td>
+                  <td style={{ padding: 8, textAlign: "center", color: "rgba(224,230,255,0.7)" }}>{returned}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  </div>
+);
+
+const InventoryAnalyticsPage = ({ historicSales = [], products = [] }) => {
+  const totalRevenue = historicSales.reduce((sum, s) => sum + (s.revenue || 0), 0);
+  const totalSold = historicSales.reduce((sum, s) => sum + (s.sold || 0), 0);
+  return (
+    <div>
+      <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Inventory Analytics</h1>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginTop: 20 }}>
+        <StatCard title="Historic Revenue" value={currency(totalRevenue)} icon={DollarSign} color={BRAND.primary} />
+        <StatCard title="Units Sold" value={totalSold} icon={Package} color={BRAND.success} />
+      </div>
+    </div>
+  );
+};
+
 // PAGES: NOTIFICATIONS
 // ============================================================================
 
-const NotificationsPage = () => {
-  const notifications = [
+const NotificationsPage = ({ notifications = [] }) => {
+  const displayNotifs = notifications.length > 0 ? notifications : [
     {
       id: 1,
       type: "shift",
@@ -2220,7 +2297,7 @@ const NotificationsPage = () => {
       </h1>
 
       <div className="space-y-2">
-        {notifications.map((notif) => (
+        {displayNotifs.map((notif) => (
           <div
             key={notif.id}
             className="p-4 rounded-lg cursor-pointer transition hover:bg-white/10"
@@ -2306,7 +2383,15 @@ export default function App() {
   // Data State
   const [employees, setEmployees] = useState([]);
   const [events, setEvents] = useState([]);
-  const [payroll, setPayroll] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [shifts, setShifts] = useState([]);
+  const [availability, setAvailability] = useState({});
+  const [products, setProducts] = useState([]);
+  const [stock, setStock] = useState({});
+  const [distributions, setDistributions] = useState([]);
+  const [historicSales, setHistoricSales] = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [skills, setSkills] = useState([]);
   const [employeeSkills, setEmployeeSkills] = useState([]);
   const [roleRequirements, setRoleRequirements] = useState([]);
@@ -2357,40 +2442,47 @@ export default function App() {
   // Load data from Supabase
   const loadData = async () => {
     try {
-      const [empRes, eventsRes, payrollRes, skillsRes, empSkillsRes, roleReqRes] =
-        await Promise.all([
-          supabase
-            .from("employees")
-            .select("*")
-            .order("first_name"),
-          supabase
-            .from("events")
-            .select("*")
-            .order("date", { ascending: false }),
-          supabase
-            .from("payroll")
-            .select("*")
-            .order("date", { ascending: false }),
-          supabase
-            .from("skills")
-            .select("*")
-            .order("sort_order"),
-          supabase
-            .from("employee_skills")
-            .select("*, skills(*)")
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("role_requirements")
-            .select("*")
-            .order("created_at", { ascending: false }),
-        ]);
-
-      setEmployees(empRes.data || []);
-      setEvents(eventsRes.data || []);
-      setPayroll(payrollRes.data || []);
-      setSkills(skillsRes.data || []);
-      setEmployeeSkills(empSkillsRes.data || []);
-      setRoleRequirements(roleReqRes.data || []);
+      const [empRes, evtRes, locRes, shiftRes, availRes, prodRes, stockRes, distRes, histRes, templRes, notRes, skillsRes, empSkillsRes, roleReqRes] = await Promise.all([
+        supabase.from("employees").select("*"),
+        supabase.from("events").select("*"),
+        supabase.from("event_locations").select("*"),
+        supabase.from("shifts").select("*"),
+        supabase.from("employee_availability").select("*"),
+        supabase.from("products").select("*"),
+        supabase.from("stock_levels").select("*"),
+        supabase.from("distributions").select("*"),
+        supabase.from("historic_sales").select("*"),
+        supabase.from("shift_templates").select("*, shift_template_entries(*)"),
+        supabase.from("notifications").select("*"),
+        supabase.from("skills").select("*").order("sort_order"),
+        supabase.from("employee_skills").select("*, skills(*)"),
+        supabase.from("role_requirements").select("*"),
+      ]);
+      if (empRes.data) setEmployees(empRes.data);
+      if (evtRes.data) setEvents(evtRes.data);
+      if (locRes.data) setLocations(locRes.data);
+      if (shiftRes.data) setShifts(shiftRes.data);
+      if (availRes.data) {
+        const availObj = {};
+        availRes.data.forEach(r => {
+          if (!availObj[r.employee_id]) availObj[r.employee_id] = {};
+          availObj[r.employee_id][r.avail_date] = r.status;
+        });
+        setAvailability(availObj);
+      }
+      if (prodRes.data) setProducts(prodRes.data);
+      if (stockRes.data) {
+        const stockObj = {};
+        stockRes.data.forEach(r => { stockObj[r.product_id] = r.quantity; });
+        setStock(stockObj);
+      }
+      if (distRes.data) setDistributions(distRes.data);
+      if (histRes.data) setHistoricSales(histRes.data);
+      if (templRes.data) setTemplates(templRes.data.map(t => ({ ...t, shifts: t.shift_template_entries || [] })));
+      if (notRes.data) setNotifications(notRes.data);
+      if (skillsRes.data) setSkills(skillsRes.data);
+      if (empSkillsRes.data) setEmployeeSkills(empSkillsRes.data);
+      if (roleReqRes.data) setRoleRequirements(roleReqRes.data);
 
       // Subscribe to realtime updates
       setupRealtimeSubscriptions();
@@ -2401,7 +2493,7 @@ export default function App() {
 
   // Setup Realtime subscriptions
   const setupRealtimeSubscriptions = () => {
-    const tables = ["employees", "events", "payroll", "skills", "employee_skills", "role_requirements"];
+    const tables = ["employees", "events", "shifts", "notifications", "skills", "employee_skills", "role_requirements"];
 
     const subscriptions = tables.map((table) => {
       const channel = supabase
@@ -2486,16 +2578,19 @@ export default function App() {
   // Render page content
   const renderPage = () => {
     const pageContent = {
-      dashboard: <DashboardPage employees={employees} events={events} payroll={payroll} />,
-      "calendar-view": <CalendarViewPage events={events} employees={employees} employeeSkills={employeeSkills} />,
-      "shift-builder": <ShiftBuilderPage events={events} employees={employees} roleRequirements={roleRequirements} />,
-      "role-requirements": <RoleRequirementsPage events={events} roleRequirements={roleRequirements} />,
+      dashboard: <DashboardPage employees={employees} events={events} locations={locations} shifts={shifts} availability={availability} products={products} stock={stock} historicSales={historicSales} />,
+      "calendar-view": <CalendarViewPage events={events} employees={employees} shifts={shifts} locations={locations} availability={availability} employeeSkills={employeeSkills} skills={skills} />,
+      "shift-builder": <ShiftBuilderPage events={events} employees={employees} shifts={shifts} locations={locations} roleRequirements={roleRequirements} />,
+      "role-requirements": <RoleRequirementsPage events={events} shifts={shifts} locations={locations} employees={employees} roleRequirements={roleRequirements} />,
       directory: <DirectoryPage employees={employees} employeeSkills={employeeSkills} skills={skills} />,
       "skills-tags": <SkillsTagsPage employees={employees} skills={skills} employeeSkills={employeeSkills} />,
-      availability: <AvailabilityPage employees={employees} />,
-      payroll: <PayrollPage employees={employees} payroll={payroll} />,
-      reports: <ReportsPage employees={employees} events={events} payroll={payroll} />,
-      notifications: <NotificationsPage />,
+      availability: <AvailabilityPage employees={employees} events={events} availability={availability} />,
+      payroll: <PayrollPage employees={employees} events={events} locations={locations} shifts={shifts} />,
+      products: <InventoryProductsPage products={products} stock={stock} />,
+      stock: <InventoryStockPage products={products} stock={stock} distributions={distributions} />,
+      "inv-analytics": <InventoryAnalyticsPage historicSales={historicSales} products={products} />,
+      reports: <ReportsPage employees={employees} events={events} shifts={shifts} historicSales={historicSales} products={products} />,
+      notifications: <NotificationsPage notifications={notifications} />,
       settings: <SettingsPage user={user} />,
     };
 
