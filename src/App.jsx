@@ -2251,80 +2251,604 @@ const ReportsPage = ({ employees = [], events = [], shifts = [], historicSales =
 // PAGES: INVENTORY
 // ============================================================================
 
-const InventoryProductsPage = ({ products = [], stock = {} }) => {
+const PRODUCT_CATEGORIES = [
+  { value: "T-Shirts", label: "T-Shirts" },
+  { value: "Hoodies", label: "Hoodies" },
+  { value: "Hats", label: "Hats" },
+  { value: "Accessories", label: "Accessories" },
+  { value: "Stickers", label: "Stickers" },
+  { value: "Other", label: "Other" },
+];
+
+const InventoryProductsPage = ({ products = [], stock = {}, onRefresh }) => {
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editProduct, setEditProduct] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ name: "", sku: "", category: "T-Shirts", cost: "", retail: "", sizes: "S,M,L,XL", weight_kg: "" });
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
+
   const totalStockUnits = Object.values(stock).reduce((a, b) => a + b, 0);
-  const totalStockValue = products.reduce((sum, p) => sum + (stock[p.id] || 0) * (p.cost || 0), 0);
+  const totalStockValue = products.reduce((sum, p) => sum + (stock[p.id] || 0) * Number(p.cost || 0), 0);
+  const activeProducts = products.filter(p => p.status === "active");
+  const avgMargin = activeProducts.length > 0
+    ? (activeProducts.reduce((sum, p) => sum + (Number(p.retail) > 0 ? ((Number(p.retail) - Number(p.cost)) / Number(p.retail)) * 100 : 0), 0) / activeProducts.length).toFixed(0)
+    : 0;
+
+  const resetForm = () => setForm({ name: "", sku: "", category: "T-Shirts", cost: "", retail: "", sizes: "S,M,L,XL", weight_kg: "" });
+
+  const openEdit = (p) => {
+    setEditProduct(p);
+    setForm({
+      name: p.name,
+      sku: p.sku,
+      category: p.category || "T-Shirts",
+      cost: String(p.cost),
+      retail: String(p.retail),
+      sizes: (p.sizes || []).join(","),
+      weight_kg: String(p.weight_kg || ""),
+    });
+  };
+
+  const handleSave = async () => {
+    if (!form.name || !form.sku) return;
+    setSaving(true);
+    const payload = {
+      name: form.name,
+      sku: form.sku,
+      category: form.category || "T-Shirts",
+      cost: parseFloat(form.cost) || 0,
+      retail: parseFloat(form.retail) || 0,
+      sizes: form.sizes ? form.sizes.split(",").map(s => s.trim()).filter(Boolean) : ["S", "M", "L", "XL"],
+      weight_kg: parseFloat(form.weight_kg) || 0,
+    };
+    if (editProduct) {
+      await supabase.from("products").update(payload).eq("id", editProduct.id);
+    } else {
+      const { data } = await supabase.from("products").insert(payload).select();
+      // Create stock_levels entry for new product
+      if (data?.[0]) {
+        await supabase.from("stock_levels").insert({ product_id: data[0].id, quantity: 0 });
+      }
+    }
+    setSaving(false);
+    setShowAddModal(false);
+    setEditProduct(null);
+    resetForm();
+    onRefresh?.();
+  };
+
+  const handleDelete = async (id) => {
+    if (!confirm("Delete this product? This cannot be undone.")) return;
+    await supabase.from("products").delete().eq("id", id);
+    onRefresh?.();
+  };
+
+  const handleToggleStatus = async (p) => {
+    const newStatus = p.status === "active" ? "inactive" : "active";
+    await supabase.from("products").update({ status: newStatus }).eq("id", p.id);
+    onRefresh?.();
+  };
+
+  const filtered = products.filter(p => {
+    const matchSearch = !searchTerm || p.name.toLowerCase().includes(searchTerm.toLowerCase()) || p.sku.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchCategory = !filterCategory || p.category === filterCategory;
+    return matchSearch && matchCategory;
+  });
+
   return (
-    <div>
-      <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Products</h1>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 16, marginTop: 20 }}>
-        <StatCard title="Total Products" value={products.length} icon={Package} color={BRAND.primary} />
-        <StatCard title="Stock Units" value={totalStockUnits} icon={Package} color={BRAND.success} />
-        <StatCard title="Stock Value" value={currency(totalStockValue)} icon={DollarSign} color={BRAND.warning} />
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Products</h1>
+        <Btn icon={Plus} onClick={() => { resetForm(); setEditProduct(null); setShowAddModal(true); }}>Add Product</Btn>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16, marginTop: 20 }}>
-        {products.map(p => {
-          const margin = p.retail > 0 ? (((p.retail - p.cost) / p.retail) * 100).toFixed(0) : 0;
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Total Products" value={activeProducts.length} icon={Package} color="primary" />
+        <StatCard label="Stock Units" value={totalStockUnits} icon={Package} color="success" />
+        <StatCard label="Stock Value" value={currency(totalStockValue)} icon={DollarSign} color="warning" />
+        <StatCard label="Avg Margin" value={`${avgMargin}%`} icon={TrendingUp} color="primary" />
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex-1 min-w-48">
+          <input
+            type="text"
+            placeholder="Search products..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full px-4 py-2 rounded-lg text-white focus:outline-none focus:ring-2"
+            style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}
+          />
+        </div>
+        <select
+          value={filterCategory}
+          onChange={(e) => setFilterCategory(e.target.value)}
+          className="px-4 py-2 rounded-lg text-white focus:outline-none"
+          style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}
+        >
+          <option value="">All Categories</option>
+          {PRODUCT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
+      </div>
+
+      {/* Product Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        {filtered.map(p => {
+          const margin = Number(p.retail) > 0 ? (((Number(p.retail) - Number(p.cost)) / Number(p.retail)) * 100).toFixed(0) : 0;
+          const onHand = stock[p.id] || 0;
+          const isInactive = p.status !== "active";
           return (
-            <Card key={p.id} title={p.name} icon={Package}>
-              <div style={{ fontSize: 13, color: "rgba(224,230,255,0.7)" }}>
-                <p>SKU: {p.sku}</p>
-                <p style={{ marginTop: 4 }}>Cost: {currency(p.cost)} | Retail: {currency(p.retail)}</p>
-                <p style={{ color: BRAND.primary, marginTop: 4 }}>Margin: {margin}% | Stock: {stock[p.id] || 0}</p>
+            <div
+              key={p.id}
+              className={`rounded-xl p-4 ${isInactive ? "opacity-60" : ""}`}
+              style={{ background: BRAND.glass, border: `1px solid ${BRAND.glassBorder}`, backdropFilter: BRAND.blur }}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-base" style={{ color: BRAND.text }}>{p.name}</h3>
+                  <p className="text-xs mt-1" style={{ color: "rgba(224,230,255,0.5)" }}>
+                    SKU: {p.sku} &middot; {p.category || "T-Shirts"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                    <Edit2 size={14} style={{ color: BRAND.primary }} />
+                  </button>
+                  <button onClick={() => handleToggleStatus(p)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                    {isInactive ? <Eye size={14} style={{ color: BRAND.success }} /> : <EyeOff size={14} style={{ color: BRAND.warning }} />}
+                  </button>
+                  <button onClick={() => handleDelete(p.id)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                    <Trash2 size={14} style={{ color: BRAND.danger }} />
+                  </button>
+                </div>
               </div>
-            </Card>
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <p className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>Cost</p>
+                  <p className="font-semibold text-sm" style={{ color: BRAND.text }}>{currency(p.cost)}</p>
+                </div>
+                <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <p className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>Retail</p>
+                  <p className="font-semibold text-sm" style={{ color: BRAND.primary }}>{currency(p.retail)}</p>
+                </div>
+                <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <p className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>Margin</p>
+                  <p className="font-semibold text-sm" style={{ color: BRAND.success }}>{margin}%</p>
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Package size={14} style={{ color: BRAND.primary }} />
+                  <span className="text-sm" style={{ color: BRAND.text }}>{onHand} in stock</span>
+                </div>
+                {(p.sizes || []).length > 0 && (
+                  <div className="flex gap-1">
+                    {(p.sizes || []).map(s => (
+                      <span key={s} className="text-xs px-1.5 py-0.5 rounded" style={{ background: "rgba(84,205,249,0.15)", color: BRAND.primary }}>{s}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           );
         })}
-        {products.length === 0 && <EmptyState icon={Package} title="No products" description="Add products to get started" />}
       </div>
+
+      {filtered.length === 0 && (
+        <EmptyState icon={Package} title="No products found" message={searchTerm ? "Try a different search term" : "Add your first product to get started"} />
+      )}
+
+      {/* Add/Edit Modal */}
+      <Modal isOpen={showAddModal || !!editProduct} onClose={() => { setShowAddModal(false); setEditProduct(null); resetForm(); }} title={editProduct ? "Edit Product" : "Add Product"} size="lg">
+        <div className="space-y-1">
+          <Input label="Product Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Collide Classic Tee" />
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="SKU" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} placeholder="e.g. CLT-001" />
+            <Select label="Category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} options={PRODUCT_CATEGORIES} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Cost ($)" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} type="number" placeholder="0.00" />
+            <Input label="Retail ($)" value={form.retail} onChange={(e) => setForm({ ...form, retail: e.target.value })} type="number" placeholder="0.00" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Sizes (comma-separated)" value={form.sizes} onChange={(e) => setForm({ ...form, sizes: e.target.value })} placeholder="S,M,L,XL" />
+            <Input label="Weight (kg)" value={form.weight_kg} onChange={(e) => setForm({ ...form, weight_kg: e.target.value })} type="number" placeholder="0.3" />
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <Btn variant="secondary" onClick={() => { setShowAddModal(false); setEditProduct(null); resetForm(); }}>Cancel</Btn>
+            <Btn onClick={handleSave} disabled={saving || !form.name || !form.sku}>{saving ? "Saving..." : editProduct ? "Update" : "Create"}</Btn>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
 
-const InventoryStockPage = ({ products = [], stock = {}, distributions = [] }) => (
-  <div>
-    <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Stock & Distribution</h1>
-    <Card title="Stock Levels" icon={Package} style={{ marginTop: 20 }}>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
-              <th style={{ padding: 8, textAlign: "left", color: BRAND.primary }}>Product</th>
-              <th style={{ padding: 8, textAlign: "center", color: BRAND.primary }}>On Hand</th>
-              <th style={{ padding: 8, textAlign: "center", color: BRAND.primary }}>Distributed</th>
-              <th style={{ padding: 8, textAlign: "center", color: BRAND.primary }}>Returned</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map(p => {
-              const onHand = stock[p.id] || 0;
-              const distrib = distributions.filter(d => d.product_id === p.id).reduce((sum, d) => sum + (d.qty_sent || 0), 0);
-              const returned = distributions.filter(d => d.product_id === p.id).reduce((sum, d) => sum + (d.qty_returned || 0), 0);
-              return (
-                <tr key={p.id} style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
-                  <td style={{ padding: 8, color: BRAND.text }}>{p.name}</td>
-                  <td style={{ padding: 8, textAlign: "center", color: BRAND.primary }}>{onHand}</td>
-                  <td style={{ padding: 8, textAlign: "center", color: "rgba(224,230,255,0.7)" }}>{distrib}</td>
-                  <td style={{ padding: 8, textAlign: "center", color: "rgba(224,230,255,0.7)" }}>{returned}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </Card>
-  </div>
-);
+const InventoryStockPage = ({ products = [], stock = {}, distributions = [], events = [], onRefresh }) => {
+  const [showDistModal, setShowDistModal] = useState(false);
+  const [showRestockModal, setShowRestockModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [distForm, setDistForm] = useState({ event_id: "", product_id: "", qty_sent: "", notes: "" });
+  const [restockForm, setRestockForm] = useState({ product_id: "", quantity: "" });
+  const [filterProduct, setFilterProduct] = useState("");
 
-const InventoryAnalyticsPage = ({ historicSales = [], products = [] }) => {
-  const totalRevenue = historicSales.reduce((sum, s) => sum + (s.revenue || 0), 0);
-  const totalSold = historicSales.reduce((sum, s) => sum + (s.sold || 0), 0);
+  const totalDistributed = distributions.reduce((sum, d) => sum + (d.qty_sent || 0), 0);
+  const totalReturned = distributions.reduce((sum, d) => sum + (d.qty_returned || 0), 0);
+  const totalSold = distributions.reduce((sum, d) => sum + (d.qty_sold || 0), 0);
+  const totalOnHand = Object.values(stock).reduce((a, b) => a + b, 0);
+
+  const handleCreateDistribution = async () => {
+    if (!distForm.event_id || !distForm.product_id || !distForm.qty_sent) return;
+    setSaving(true);
+    await supabase.from("distributions").insert({
+      event_id: distForm.event_id,
+      product_id: distForm.product_id,
+      qty_sent: parseInt(distForm.qty_sent),
+      status: "shipped",
+      shipped_at: new Date().toISOString(),
+      notes: distForm.notes || null,
+    });
+    // Reduce stock
+    const currentQty = stock[distForm.product_id] || 0;
+    const newQty = Math.max(0, currentQty - parseInt(distForm.qty_sent));
+    await supabase.from("stock_levels").update({ quantity: newQty, updated_at: new Date().toISOString() }).eq("product_id", distForm.product_id);
+    setSaving(false);
+    setShowDistModal(false);
+    setDistForm({ event_id: "", product_id: "", qty_sent: "", notes: "" });
+    onRefresh?.();
+  };
+
+  const handleRecordReturn = async (distId, returnQty) => {
+    const qty = parseInt(returnQty);
+    if (!qty || qty <= 0) return;
+    const dist = distributions.find(d => d.id === distId);
+    if (!dist) return;
+    const newReturned = (dist.qty_returned || 0) + qty;
+    await supabase.from("distributions").update({
+      qty_returned: newReturned,
+      returned_at: new Date().toISOString(),
+      status: "returned",
+    }).eq("id", distId);
+    // Add back to stock
+    const currentQty = stock[dist.product_id] || 0;
+    await supabase.from("stock_levels").update({ quantity: currentQty + qty, updated_at: new Date().toISOString() }).eq("product_id", dist.product_id);
+    onRefresh?.();
+  };
+
+  const handleRecordSales = async (distId, soldQty) => {
+    const qty = parseInt(soldQty);
+    if (!qty || qty <= 0) return;
+    const dist = distributions.find(d => d.id === distId);
+    if (!dist) return;
+    await supabase.from("distributions").update({
+      qty_sold: (dist.qty_sold || 0) + qty,
+    }).eq("id", distId);
+    onRefresh?.();
+  };
+
+  const handleRestock = async () => {
+    if (!restockForm.product_id || !restockForm.quantity) return;
+    setSaving(true);
+    const currentQty = stock[restockForm.product_id] || 0;
+    const newQty = currentQty + parseInt(restockForm.quantity);
+    // Upsert stock level
+    const { data: existing } = await supabase.from("stock_levels").select("id").eq("product_id", restockForm.product_id).maybeSingle();
+    if (existing) {
+      await supabase.from("stock_levels").update({ quantity: newQty, last_restocked_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq("product_id", restockForm.product_id);
+    } else {
+      await supabase.from("stock_levels").insert({ product_id: restockForm.product_id, quantity: parseInt(restockForm.quantity), last_restocked_at: new Date().toISOString() });
+    }
+    setSaving(false);
+    setShowRestockModal(false);
+    setRestockForm({ product_id: "", quantity: "" });
+    onRefresh?.();
+  };
+
+  const filteredDist = distributions.filter(d => !filterProduct || d.product_id === filterProduct)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
   return (
-    <div>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Stock & Distribution</h1>
+        <div className="flex gap-2">
+          <Btn icon={Plus} variant="secondary" onClick={() => setShowRestockModal(true)}>Restock</Btn>
+          <Btn icon={Plus} onClick={() => setShowDistModal(true)}>New Distribution</Btn>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="On Hand" value={totalOnHand} icon={Package} color="primary" />
+        <StatCard label="Distributed" value={totalDistributed} icon={Zap} color="warning" />
+        <StatCard label="Sold" value={totalSold} icon={DollarSign} color="success" />
+        <StatCard label="Returned" value={totalReturned} icon={Package} color="danger" />
+      </div>
+
+      {/* Stock Levels Table */}
+      <SectionCard title="Current Stock Levels" icon={Package}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
+                <th className="text-left py-3 px-3" style={{ color: BRAND.primary }}>Product</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Category</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>On Hand</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Distributed</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Sold</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Returned</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map(p => {
+                const onHand = stock[p.id] || 0;
+                const distrib = distributions.filter(d => d.product_id === p.id).reduce((sum, d) => sum + (d.qty_sent || 0), 0);
+                const sold = distributions.filter(d => d.product_id === p.id).reduce((sum, d) => sum + (d.qty_sold || 0), 0);
+                const returned = distributions.filter(d => d.product_id === p.id).reduce((sum, d) => sum + (d.qty_returned || 0), 0);
+                const lowStock = onHand < 10;
+                return (
+                  <tr key={p.id} className="hover:bg-white/5 transition" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
+                    <td className="py-3 px-3" style={{ color: BRAND.text }}>{p.name}</td>
+                    <td className="py-3 px-3 text-center text-xs">
+                      <span className="px-2 py-1 rounded-full" style={{ background: "rgba(84,205,249,0.15)", color: BRAND.primary }}>{p.category}</span>
+                    </td>
+                    <td className="py-3 px-3 text-center font-semibold" style={{ color: lowStock ? BRAND.danger : BRAND.success }}>
+                      {onHand} {lowStock && <AlertCircle size={12} className="inline ml-1" />}
+                    </td>
+                    <td className="py-3 px-3 text-center" style={{ color: "rgba(224,230,255,0.7)" }}>{distrib}</td>
+                    <td className="py-3 px-3 text-center" style={{ color: BRAND.success }}>{sold}</td>
+                    <td className="py-3 px-3 text-center" style={{ color: "rgba(224,230,255,0.7)" }}>{returned}</td>
+                    <td className="py-3 px-3 text-center" style={{ color: BRAND.primary }}>{currency(onHand * Number(p.cost))}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {products.length === 0 && <EmptyState icon={Package} title="No products" message="Add products first in the Products page" />}
+        </div>
+      </SectionCard>
+
+      {/* Recent Distributions */}
+      <SectionCard title="Distribution History" icon={Zap}>
+        <div className="mb-4">
+          <select
+            value={filterProduct}
+            onChange={(e) => setFilterProduct(e.target.value)}
+            className="px-3 py-1.5 rounded-lg text-sm text-white focus:outline-none"
+            style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}
+          >
+            <option value="">All Products</option>
+            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
+                <th className="text-left py-3 px-3" style={{ color: BRAND.primary }}>Product</th>
+                <th className="text-left py-3 px-3" style={{ color: BRAND.primary }}>Event</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Sent</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Sold</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Returned</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Status</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredDist.slice(0, 20).map(d => {
+                const product = products.find(p => p.id === d.product_id);
+                const event = events.find(e => e.id === d.event_id);
+                const remaining = (d.qty_sent || 0) - (d.qty_sold || 0) - (d.qty_returned || 0);
+                const statusColors = { draft: BRAND.warning, shipped: BRAND.primary, returned: BRAND.success, completed: BRAND.success };
+                return (
+                  <tr key={d.id} className="hover:bg-white/5 transition" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
+                    <td className="py-3 px-3" style={{ color: BRAND.text }}>{product?.name || "Unknown"}</td>
+                    <td className="py-3 px-3" style={{ color: "rgba(224,230,255,0.7)" }}>{event?.name || "Unknown"}</td>
+                    <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{d.qty_sent}</td>
+                    <td className="py-3 px-3 text-center" style={{ color: BRAND.success }}>{d.qty_sold || 0}</td>
+                    <td className="py-3 px-3 text-center" style={{ color: "rgba(224,230,255,0.7)" }}>{d.qty_returned || 0}</td>
+                    <td className="py-3 px-3 text-center">
+                      <span className="text-xs px-2 py-1 rounded-full" style={{ background: `${statusColors[d.status] || BRAND.primary}20`, color: statusColors[d.status] || BRAND.primary }}>
+                        {d.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 text-center">
+                      {remaining > 0 && (
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => {
+                              const qty = prompt(`Record sales for ${product?.name}? (max ${remaining})`);
+                              if (qty) handleRecordSales(d.id, qty);
+                            }}
+                            className="text-xs px-2 py-1 rounded hover:bg-white/10 transition"
+                            style={{ color: BRAND.success }}
+                          >Sold</button>
+                          <button
+                            onClick={() => {
+                              const qty = prompt(`Return how many ${product?.name}? (max ${remaining})`);
+                              if (qty) handleRecordReturn(d.id, qty);
+                            }}
+                            className="text-xs px-2 py-1 rounded hover:bg-white/10 transition"
+                            style={{ color: BRAND.warning }}
+                          >Return</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {filteredDist.length === 0 && <EmptyState icon={Zap} title="No distributions" message="Create a distribution to send inventory to an event" />}
+        </div>
+      </SectionCard>
+
+      {/* New Distribution Modal */}
+      <Modal isOpen={showDistModal} onClose={() => { setShowDistModal(false); setDistForm({ event_id: "", product_id: "", qty_sent: "", notes: "" }); }} title="Create Distribution" size="md">
+        <div className="space-y-1">
+          <Select label="Event" value={distForm.event_id} onChange={(e) => setDistForm({ ...distForm, event_id: e.target.value })} options={events.map(ev => ({ value: ev.id, label: ev.name }))} placeholder="Select event..." />
+          <Select label="Product" value={distForm.product_id} onChange={(e) => setDistForm({ ...distForm, product_id: e.target.value })} options={products.map(p => ({ value: p.id, label: `${p.name} (${stock[p.id] || 0} in stock)` }))} placeholder="Select product..." />
+          <Input label="Quantity to Send" value={distForm.qty_sent} onChange={(e) => setDistForm({ ...distForm, qty_sent: e.target.value })} type="number" placeholder="0" />
+          <Input label="Notes (optional)" value={distForm.notes} onChange={(e) => setDistForm({ ...distForm, notes: e.target.value })} placeholder="Any notes..." />
+          {distForm.product_id && distForm.qty_sent && parseInt(distForm.qty_sent) > (stock[distForm.product_id] || 0) && (
+            <p className="text-xs" style={{ color: BRAND.danger }}>Warning: Sending more than available stock ({stock[distForm.product_id] || 0} on hand)</p>
+          )}
+          <div className="flex justify-end gap-2 mt-4">
+            <Btn variant="secondary" onClick={() => setShowDistModal(false)}>Cancel</Btn>
+            <Btn onClick={handleCreateDistribution} disabled={saving || !distForm.event_id || !distForm.product_id || !distForm.qty_sent}>{saving ? "Saving..." : "Ship"}</Btn>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Restock Modal */}
+      <Modal isOpen={showRestockModal} onClose={() => { setShowRestockModal(false); setRestockForm({ product_id: "", quantity: "" }); }} title="Restock Inventory" size="md">
+        <div className="space-y-1">
+          <Select label="Product" value={restockForm.product_id} onChange={(e) => setRestockForm({ ...restockForm, product_id: e.target.value })} options={products.map(p => ({ value: p.id, label: `${p.name} (${stock[p.id] || 0} current)` }))} placeholder="Select product..." />
+          <Input label="Quantity to Add" value={restockForm.quantity} onChange={(e) => setRestockForm({ ...restockForm, quantity: e.target.value })} type="number" placeholder="0" />
+          <div className="flex justify-end gap-2 mt-4">
+            <Btn variant="secondary" onClick={() => setShowRestockModal(false)}>Cancel</Btn>
+            <Btn variant="success" onClick={handleRestock} disabled={saving || !restockForm.product_id || !restockForm.quantity}>{saving ? "Saving..." : "Restock"}</Btn>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+};
+
+const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributions = [], stock = {} }) => {
+  const totalRevenue = historicSales.reduce((sum, s) => sum + Number(s.revenue || 0), 0);
+  const totalSold = historicSales.reduce((sum, s) => sum + (s.sold || 0), 0);
+  const totalSent = historicSales.reduce((sum, s) => sum + (s.sent || 0), 0);
+  const sellThroughRate = totalSent > 0 ? ((totalSold / totalSent) * 100).toFixed(0) : 0;
+  const avgRevenuePerUnit = totalSold > 0 ? (totalRevenue / totalSold) : 0;
+
+  // Revenue by event (for bar chart)
+  const revenueByEvent = useMemo(() => {
+    const map = {};
+    historicSales.forEach(s => {
+      const name = s.event_name || "Unknown";
+      if (!map[name]) map[name] = { name, revenue: 0, sold: 0 };
+      map[name].revenue += Number(s.revenue || 0);
+      map[name].sold += (s.sold || 0);
+    });
+    return Object.values(map).sort((a, b) => b.revenue - a.revenue).slice(0, 8);
+  }, [historicSales]);
+
+  // Revenue by product (for pie chart)
+  const revenueByProduct = useMemo(() => {
+    const map = {};
+    historicSales.forEach(s => {
+      const prod = products.find(p => p.id === s.product_id);
+      const name = prod?.name || "Unknown";
+      if (!map[name]) map[name] = { name, revenue: 0, sold: 0 };
+      map[name].revenue += Number(s.revenue || 0);
+      map[name].sold += (s.sold || 0);
+    });
+    return Object.values(map).sort((a, b) => b.revenue - a.revenue);
+  }, [historicSales, products]);
+
+  // Sell-through by product (for bar chart)
+  const sellThroughByProduct = useMemo(() => {
+    const map = {};
+    historicSales.forEach(s => {
+      const prod = products.find(p => p.id === s.product_id);
+      const name = prod?.name || "Unknown";
+      if (!map[name]) map[name] = { name, sent: 0, sold: 0 };
+      map[name].sent += (s.sent || 0);
+      map[name].sold += (s.sold || 0);
+    });
+    return Object.values(map).map(item => ({
+      ...item,
+      rate: item.sent > 0 ? Math.round((item.sold / item.sent) * 100) : 0,
+    })).sort((a, b) => b.rate - a.rate).slice(0, 8);
+  }, [historicSales, products]);
+
+  const COLORS_PIE = [BRAND.primary, BRAND.success, BRAND.warning, BRAND.danger, "#9C27B0", "#00BCD4", "#FF5722", "#607D8B"];
+
+  return (
+    <div className="space-y-6">
       <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Inventory Analytics</h1>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginTop: 20 }}>
-        <StatCard title="Historic Revenue" value={currency(totalRevenue)} icon={DollarSign} color={BRAND.primary} />
-        <StatCard title="Units Sold" value={totalSold} icon={Package} color={BRAND.success} />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Total Revenue" value={currency(totalRevenue)} icon={DollarSign} color="primary" />
+        <StatCard label="Units Sold" value={totalSold} icon={Package} color="success" />
+        <StatCard label="Sell-Through" value={`${sellThroughRate}%`} icon={TrendingUp} color="warning" />
+        <StatCard label="Avg $/Unit" value={currency(avgRevenuePerUnit)} icon={BarChart3} color="primary" />
+      </div>
+
+      {/* Revenue by Event */}
+      <SectionCard title="Revenue by Event" icon={BarChart3}>
+        {revenueByEvent.length > 0 ? (
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={revenueByEvent} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <XAxis dataKey="name" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} angle={-30} textAnchor="end" />
+              <YAxis tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+              <Tooltip contentStyle={{ background: BRAND.navy, border: `1px solid ${BRAND.glassBorder}`, borderRadius: 8, color: BRAND.text }} formatter={(v) => [currency(v), "Revenue"]} />
+              <Bar dataKey="revenue" fill={BRAND.primary} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <EmptyState icon={BarChart3} title="No sales data" message="Historic sales will appear here after events" />
+        )}
+      </SectionCard>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Revenue by Product Pie */}
+        <SectionCard title="Revenue by Product" icon={DollarSign}>
+          {revenueByProduct.length > 0 ? (
+            <div>
+              <ResponsiveContainer width="100%" height={250}>
+                <PieChart>
+                  <Pie data={revenueByProduct} cx="50%" cy="50%" outerRadius={80} dataKey="revenue" label={(entry) => entry.name} labelLine={false}>
+                    {revenueByProduct.map((_, i) => (
+                      <Cell key={i} fill={COLORS_PIE[i % COLORS_PIE.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: BRAND.navy, border: `1px solid ${BRAND.glassBorder}`, borderRadius: 8, color: BRAND.text }} formatter={(v) => [currency(v), "Revenue"]} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="space-y-1 mt-2">
+                {revenueByProduct.map((item, i) => (
+                  <div key={item.name} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ background: COLORS_PIE[i % COLORS_PIE.length] }}></div>
+                      <span style={{ color: BRAND.text }}>{item.name}</span>
+                    </div>
+                    <span style={{ color: BRAND.primary }}>{currency(item.revenue)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <EmptyState icon={DollarSign} title="No data" message="Revenue breakdown will appear here" />
+          )}
+        </SectionCard>
+
+        {/* Sell-Through Rate */}
+        <SectionCard title="Sell-Through Rate by Product" icon={TrendingUp}>
+          {sellThroughByProduct.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={sellThroughByProduct} layout="vertical" margin={{ top: 10, right: 20, left: 80, bottom: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                <XAxis type="number" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                <YAxis dataKey="name" type="category" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} width={70} />
+                <Tooltip contentStyle={{ background: BRAND.navy, border: `1px solid ${BRAND.glassBorder}`, borderRadius: 8, color: BRAND.text }} formatter={(v) => [`${v}%`, "Sell-Through"]} />
+                <Bar dataKey="rate" radius={[0, 4, 4, 0]}>
+                  {sellThroughByProduct.map((entry, i) => (
+                    <Cell key={i} fill={entry.rate >= 70 ? BRAND.success : entry.rate >= 40 ? BRAND.warning : BRAND.danger} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <EmptyState icon={TrendingUp} title="No data" message="Sell-through rates will appear here" />
+          )}
+        </SectionCard>
       </div>
     </div>
   );
@@ -2569,7 +3093,7 @@ export default function App() {
 
   // Setup Realtime subscriptions
   const setupRealtimeSubscriptions = () => {
-    const tables = ["employees", "events", "shifts", "notifications", "skills", "employee_skills", "role_requirements"];
+    const tables = ["employees", "events", "shifts", "notifications", "skills", "employee_skills", "role_requirements", "products", "stock_levels", "distributions"];
 
     const subscriptions = tables.map((table) => {
       const channel = supabase
@@ -2662,9 +3186,9 @@ export default function App() {
       "skills-tags": <SkillsTagsPage employees={employees} skills={skills} employeeSkills={employeeSkills} onRefresh={loadData} />,
       availability: <AvailabilityPage employees={employees} events={events} availability={availability} onRefresh={loadData} />,
       payroll: <PayrollPage employees={employees} events={events} locations={locations} shifts={shifts} />,
-      products: <InventoryProductsPage products={products} stock={stock} />,
-      stock: <InventoryStockPage products={products} stock={stock} distributions={distributions} />,
-      "inv-analytics": <InventoryAnalyticsPage historicSales={historicSales} products={products} />,
+      products: <InventoryProductsPage products={products} stock={stock} onRefresh={loadData} />,
+      stock: <InventoryStockPage products={products} stock={stock} distributions={distributions} events={events} onRefresh={loadData} />,
+      "inv-analytics": <InventoryAnalyticsPage historicSales={historicSales} products={products} distributions={distributions} stock={stock} />,
       reports: <ReportsPage employees={employees} events={events} shifts={shifts} historicSales={historicSales} products={products} />,
       notifications: <NotificationsPage notifications={notifications} />,
       settings: <SettingsPage user={user} />,
