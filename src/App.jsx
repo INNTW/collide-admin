@@ -1215,7 +1215,7 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
 // PAGES: SHIFT BUILDER
 // ============================================================================
 
-const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts = [], locations = [], roleRequirements = [] }) => {
+const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts = [], locations = [], roleRequirements = [], onRefresh }) => {
   const [selectedEvent, setSelectedEvent] = useState(events[0]?.id || "");
   const [draftShifts, setDraftShifts] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -1229,16 +1229,25 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts 
   const currentEvent = events.find((e) => e.id === selectedEvent);
   const eventRoles = roleRequirements.filter((r) => r.event_id === selectedEvent);
 
-  const handleAddShift = () => {
-    if (newShift.employee_id && newShift.start_time && newShift.end_time) {
-      setDraftShifts([
-        ...draftShifts,
-        {
-          id: Date.now(),
-          event_id: selectedEvent,
-          ...newShift,
-        },
-      ]);
+  const handleAddShift = async () => {
+    if (newShift.employee_id && newShift.start_time && newShift.end_time && selectedEvent) {
+      const { error } = await supabase.from("shifts").insert({
+        event_id: selectedEvent,
+        employee_id: newShift.employee_id,
+        start_time: newShift.start_time,
+        end_time: newShift.end_time,
+        role: newShift.role || null,
+      });
+      if (error) {
+        console.error("Failed to add shift:", error);
+        alert("Failed to add shift: " + (error.message || "Unknown error"));
+        return;
+      }
+      setDraftShifts([...draftShifts, {
+        id: Date.now(),
+        event_id: selectedEvent,
+        ...newShift,
+      }]);
       setNewShift({
         employee_id: "",
         start_time: "09:00",
@@ -1246,11 +1255,21 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts 
         role: "",
       });
       setShowAddForm(false);
+      if (onRefresh) await onRefresh();
     }
   };
 
-  const handleRemoveShift = (id) => {
+  const handleRemoveShift = async (id) => {
+    // Delete from Supabase if it's a real record (UUID), skip for draft (numeric) IDs
+    if (typeof id === "string") {
+      const { error } = await supabase.from("shifts").delete().eq("id", id);
+      if (error) {
+        console.error("Failed to remove shift:", error);
+        return;
+      }
+    }
     setDraftShifts(draftShifts.filter((s) => s.id !== id));
+    if (onRefresh) await onRefresh();
   };
 
   return (
@@ -1288,7 +1307,7 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts 
                     {role.role_name}
                   </p>
                   <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
-                    Need {role.quantity_needed} staff
+                    Need {role.qty_needed} staff
                   </p>
                 </div>
               ))}
@@ -1411,7 +1430,7 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts 
 // PAGES: ROLE REQUIREMENTS
 // ============================================================================
 
-const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employees = [], roleRequirements = [] }) => {
+const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employees = [], roleRequirements = [], onRefresh }) => {
   const [selectedEvent, setSelectedEvent] = useState(events[0]?.id || "");
   const [roles, setRoles] = useState([]);
   const [showAddRole, setShowAddRole] = useState(false);
@@ -1433,29 +1452,35 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
     "Team Lead",
   ];
 
-  const handleAddRole = () => {
-    if (newRole.role_name && newRole.quantity_needed > 0) {
-      setRoles([
-        ...roles,
-        {
-          id: Date.now(),
-          event_id: selectedEvent,
-          ...newRole,
-        },
-      ]);
-      setNewRole({
-        role_name: "Sales Lead",
-        quantity_needed: 1,
+  const handleAddRole = async () => {
+    if (newRole.role_name && newRole.quantity_needed > 0 && selectedEvent) {
+      const { error } = await supabase.from("role_requirements").insert({
+        event_id: selectedEvent,
+        role_name: newRole.role_name,
+        qty_needed: newRole.quantity_needed,
+        date: new Date().toISOString().split("T")[0],
       });
+      if (error) {
+        console.error("Failed to add role:", error);
+        alert("Failed to add role: " + (error.message || "Unknown error"));
+        return;
+      }
+      setNewRole({ role_name: "Sales Lead", quantity_needed: 1 });
       setShowAddRole(false);
+      if (onRefresh) await onRefresh();
     }
   };
 
-  const handleRemoveRole = (id) => {
-    setRoles(roles.filter((r) => r.id !== id));
+  const handleRemoveRole = async (id) => {
+    const { error } = await supabase.from("role_requirements").delete().eq("id", id);
+    if (error) {
+      console.error("Failed to remove role:", error);
+      return;
+    }
+    if (onRefresh) await onRefresh();
   };
 
-  const totalNeeded = roles.reduce((sum, r) => sum + r.quantity_needed, 0);
+  const totalNeeded = roles.reduce((sum, r) => sum + r.qty_needed, 0);
 
   return (
     <div className="space-y-4">
@@ -1502,8 +1527,8 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
         ) : (
           <div className="space-y-3">
             {roles.map((role) => {
-              const filled = Math.floor(role.quantity_needed * 0.7); // Placeholder
-              const fillPercentage = (filled / role.quantity_needed) * 100;
+              const filled = Math.floor(role.qty_needed * 0.7); // Placeholder
+              const fillPercentage = (filled / role.qty_needed) * 100;
               const statusColor =
                 fillPercentage >= 80
                   ? BRAND.success
@@ -1519,7 +1544,7 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
                         {role.role_name}
                       </p>
                       <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
-                        {filled}/{role.quantity_needed} filled
+                        {filled}/{role.qty_needed} filled
                       </p>
                     </div>
                     <Btn
@@ -1726,19 +1751,29 @@ const DirectoryPage = ({ employees = [], employeeSkills = [], skills = [] }) => 
 // PAGES: SKILLS & TAGS
 // ============================================================================
 
-const SkillsTagsPage = ({ employees = [], skills = [], employeeSkills = [] }) => {
+const SkillsTagsPage = ({ employees = [], skills = [], employeeSkills = [], onRefresh }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState("");
   const [selectedSkill, setSelectedSkill] = useState("");
   const [proficiency, setProficiency] = useState("intermediate");
 
-  const handleAddSkill = () => {
+  const handleAddSkill = async () => {
     if (selectedEmployee && selectedSkill) {
-      // This would normally be saved to Supabase
+      const { error } = await supabase.from("employee_skills").insert({
+        employee_id: selectedEmployee,
+        skill_id: selectedSkill,
+        proficiency: proficiency,
+      });
+      if (error) {
+        console.error("Failed to add skill:", error);
+        alert("Failed to add skill: " + (error.message || "Unknown error"));
+        return;
+      }
       setSelectedEmployee("");
       setSelectedSkill("");
       setProficiency("intermediate");
       setShowAddModal(false);
+      if (onRefresh) await onRefresh();
     }
   };
 
@@ -1746,8 +1781,17 @@ const SkillsTagsPage = ({ employees = [], skills = [], employeeSkills = [] }) =>
     return (employeeSkills || []).filter((es) => es.employee_id === empId);
   };
 
-  const removeSkill = (employeeId, skillId) => {
-    // This would normally delete from Supabase
+  const removeSkill = async (employeeId, skillId) => {
+    const { error } = await supabase
+      .from("employee_skills")
+      .delete()
+      .eq("employee_id", employeeId)
+      .eq("skill_id", skillId);
+    if (error) {
+      console.error("Failed to remove skill:", error);
+      return;
+    }
+    if (onRefresh) await onRefresh();
   };
 
   return (
@@ -1848,7 +1892,7 @@ const SkillsTagsPage = ({ employees = [], skills = [], employeeSkills = [] }) =>
                           {es.skills?.name}
                         </p>
                         <Badge color="info" variant="outline">
-                          {es.proficiency_level || "Intermediate"}
+                          {es.proficiency || "Intermediate"}
                         </Badge>
                       </div>
                       <Btn
@@ -1875,7 +1919,7 @@ const SkillsTagsPage = ({ employees = [], skills = [], employeeSkills = [] }) =>
 // PAGES: AVAILABILITY
 // ============================================================================
 
-const AvailabilityPage = ({ employees = [] }) => {
+const AvailabilityPage = ({ employees = [], events = [], availability: initialAvailability = [], onRefresh }) => {
   const [selectedEmployee, setSelectedEmployee] = useState(employees[0]?.id || "");
   const [availability, setAvailability] = useState({
     monday: true,
@@ -1889,6 +1933,33 @@ const AvailabilityPage = ({ employees = [] }) => {
 
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const dayKeys = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+  const handleSaveAvailability = async () => {
+    if (!selectedEmployee) {
+      alert("Please select an employee");
+      return;
+    }
+    
+    const { error } = await supabase
+      .from("employee_availability")
+      .upsert(
+        {
+          employee_id: selectedEmployee,
+          ...availability,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "employee_id" }
+      );
+    
+    if (error) {
+      console.error("Failed to save availability:", error);
+      alert("Failed to save availability: " + (error.message || "Unknown error"));
+      return;
+    }
+    
+    alert("Availability saved successfully!");
+    if (onRefresh) await onRefresh();
+  };
 
   return (
     <div className="space-y-4">
@@ -1933,7 +2004,7 @@ const AvailabilityPage = ({ employees = [] }) => {
           ))}
         </div>
 
-        <Btn variant="primary" className="w-full mt-4">
+        <Btn variant="primary" className="w-full mt-4" onClick={handleSaveAvailability}>
           Save Availability
         </Btn>
       </SectionCard>
@@ -2585,11 +2656,11 @@ export default function App() {
     const pageContent = {
       dashboard: <DashboardPage employees={employees} events={events} locations={locations} shifts={shifts} availability={availability} products={products} stock={stock} historicSales={historicSales} />,
       "calendar-view": <CalendarViewPage events={events} employees={employees} shifts={shifts} locations={locations} availability={availability} employeeSkills={employeeSkills} skills={skills} />,
-      "shift-builder": <ShiftBuilderPage events={events} employees={employees} shifts={shifts} locations={locations} roleRequirements={roleRequirements} />,
-      "role-requirements": <RoleRequirementsPage events={events} shifts={shifts} locations={locations} employees={employees} roleRequirements={roleRequirements} />,
+      "shift-builder": <ShiftBuilderPage events={events} employees={employees} shifts={shifts} locations={locations} roleRequirements={roleRequirements} onRefresh={loadData} />,
+      "role-requirements": <RoleRequirementsPage events={events} shifts={shifts} locations={locations} employees={employees} roleRequirements={roleRequirements} onRefresh={loadData} />,
       directory: <DirectoryPage employees={employees} employeeSkills={employeeSkills} skills={skills} />,
-      "skills-tags": <SkillsTagsPage employees={employees} skills={skills} employeeSkills={employeeSkills} />,
-      availability: <AvailabilityPage employees={employees} events={events} availability={availability} />,
+      "skills-tags": <SkillsTagsPage employees={employees} skills={skills} employeeSkills={employeeSkills} onRefresh={loadData} />,
+      availability: <AvailabilityPage employees={employees} events={events} availability={availability} onRefresh={loadData} />,
       payroll: <PayrollPage employees={employees} events={events} locations={locations} shifts={shifts} />,
       products: <InventoryProductsPage products={products} stock={stock} />,
       stock: <InventoryStockPage products={products} stock={stock} distributions={distributions} />,
