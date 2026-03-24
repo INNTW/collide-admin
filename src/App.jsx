@@ -1115,7 +1115,7 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
   const sortedEvents = [...filteredEvents].sort((a, b) => a.start_date.localeCompare(b.start_date));
 
   const statusColors = { upcoming: BRAND.primary, active: BRAND.success, completed: "rgba(224,230,255,0.5)", cancelled: BRAND.danger };
-  const typeLabels = { festival: "Festival", concert: "Concert", market: "Market", pop_up: "Pop-Up", corporate: "Corporate", other: "Other" };
+  const typeLabels = { festival: "Festival", concert: "Concert", market: "Market", pop_up: "Pop-Up", corporate: "Corporate", tournament: "Tournament", combine: "Combine", camp: "Camp", other: "Other" };
 
   return (
     <div className="space-y-6">
@@ -3193,6 +3193,9 @@ const EVENT_TYPE_DEFAULTS = {
   market: { label: "Market", avgDays: 2, staffPerDay: 3, sellThrough: 0.50 },
   pop_up: { label: "Pop-Up", avgDays: 1, staffPerDay: 2, sellThrough: 0.45 },
   corporate: { label: "Corporate", avgDays: 1, staffPerDay: 3, sellThrough: 0.70 },
+  tournament: { label: "Tournament", avgDays: 3, staffPerDay: 5, sellThrough: 0.60 },
+  combine: { label: "Combine", avgDays: 1, staffPerDay: 4, sellThrough: 0.55 },
+  camp: { label: "Camp", avgDays: 3, staffPerDay: 4, sellThrough: 0.50 },
   other: { label: "Other", avgDays: 1, staffPerDay: 3, sellThrough: 0.50 },
 };
 
