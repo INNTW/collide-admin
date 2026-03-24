@@ -786,7 +786,6 @@ const LoginPage = ({ onLoginSuccess }) => {
 
           <Btn
             type="submit"
-            onClick={handleLogin}
             disabled={loading}
             className="w-full"
           >
@@ -921,11 +920,7 @@ const DashboardPage = ({ employees = [], events = [], locations = [], shifts = [
     .slice(0, 5);
 
   const totalStaff = (employees || []).length;
-  const staffTomorrow = (events || []).filter(
-    (e) =>
-      new Date(e.start_date).toDateString() ===
-      new Date(new Date().getTime() + 86400000).toDateString()
-  ).length;
+  const activeEvents = (events || []).filter(e => e.status === "active").length;
 
   // Payroll summary — pay_records not yet loaded in this phase, show placeholder
   const payrollThisMonth = 0;
@@ -950,9 +945,9 @@ const DashboardPage = ({ employees = [], events = [], locations = [], shifts = [
         />
         <StatCard
           icon={Calendar}
-          label="Shifts Tomorrow"
-          value={staffTomorrow}
-          color="info"
+          label="Upcoming Events"
+          value={upcomingEvents.length}
+          color="warning"
         />
         <StatCard
           icon={DollarSign}
@@ -986,10 +981,10 @@ const DashboardPage = ({ employees = [], events = [], locations = [], shifts = [
                       {event.name}
                     </p>
                     <p className="text-sm" style={{ color: "rgba(224,230,255,0.6)" }}>
-                      {formatDate(event.start_date)} at {formatTime(event.start_time)}
+                      {formatDate(event.start_date)} — {formatDate(event.end_date)}
                     </p>
                   </div>
-                  <Badge color="success">{event.staff_assigned || 0} staff</Badge>
+                  <Badge color={event.status === "active" ? "success" : event.status === "upcoming" ? "primary" : "gray"}>{event.status || "upcoming"}</Badge>
                 </div>
               </div>
             ))}
@@ -1437,7 +1432,7 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
                       <p style={{ color: BRAND.text }}>{emp.first_name} {emp.last_name}</p>
                       <div className="flex flex-wrap gap-1 mt-1">
                         {(employeeSkills.filter(es => es.employee_id === emp.id) || []).slice(0, 2).map((es) => (
-                          <Badge key={es.id} color="info" variant="outline">
+                          <Badge key={es.id} color="primary" variant="outline">
                             {es.skills?.name || "Unknown"}
                           </Badge>
                         ))}
@@ -1558,6 +1553,10 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts 
   const currentEvent = events.find((e) => e.id === selectedEvent);
   const eventRoles = roleRequirements.filter((r) => r.event_id === selectedEvent);
 
+  // Combine existing Supabase shifts for this event with any draft shifts
+  const eventShifts = existingShifts.filter(s => s.event_id === selectedEvent);
+  const allShifts = [...eventShifts, ...draftShifts.filter(d => !eventShifts.some(s => s.id === d.id))];
+
   const handleAddShift = async () => {
     if (newShift.employee_id && newShift.start_time && newShift.end_time && selectedEvent) {
       const { error } = await supabase.from("shifts").insert({
@@ -1572,11 +1571,6 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts 
         alert("Failed to add shift: " + (error.message || "Unknown error"));
         return;
       }
-      setDraftShifts([...draftShifts, {
-        id: Date.now(),
-        event_id: selectedEvent,
-        ...newShift,
-      }]);
       setNewShift({
         employee_id: "",
         start_time: "09:00",
@@ -1589,13 +1583,10 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts 
   };
 
   const handleRemoveShift = async (id) => {
-    // Delete from Supabase if it's a real record (UUID), skip for draft (numeric) IDs
-    if (typeof id === "string") {
-      const { error } = await supabase.from("shifts").delete().eq("id", id);
-      if (error) {
-        console.error("Failed to remove shift:", error);
-        return;
-      }
+    const { error } = await supabase.from("shifts").delete().eq("id", id);
+    if (error) {
+      console.error("Failed to remove shift:", error);
+      return;
     }
     setDraftShifts(draftShifts.filter((s) => s.id !== id));
     if (onRefresh) await onRefresh();
@@ -1645,12 +1636,12 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts 
         </SectionCard>
       </div>
 
-      <SectionCard title="Assigned Shifts" icon={Clock}>
-        {draftShifts.length === 0 ? (
+      <SectionCard title={`Assigned Shifts (${allShifts.length})`} icon={Clock}>
+        {allShifts.length === 0 ? (
           <EmptyState title="No shifts assigned" message="Add shifts using the form below" />
         ) : (
           <div className="space-y-2">
-            {draftShifts.map((shift) => {
+            {allShifts.map((shift) => {
               const employee = employees.find((e) => e.id === shift.employee_id);
               return (
                 <div
@@ -1810,6 +1801,9 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
   };
 
   const totalNeeded = roles.reduce((sum, r) => sum + r.qty_needed, 0);
+  const eventShifts = shifts.filter(s => s.event_id === selectedEvent);
+  const totalAssigned = new Set(eventShifts.map(s => s.employee_id)).size;
+  const totalUnfilled = Math.max(0, totalNeeded - totalAssigned);
 
   return (
     <div className="space-y-4">
@@ -1840,13 +1834,13 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
           icon={Briefcase}
           label="Total Needed"
           value={totalNeeded}
-          color="info"
+          color="primary"
         />
         <StatCard
           icon={AlertCircle}
           label="Unfilled"
-          value={Math.max(0, totalNeeded - 3)} // Placeholder
-          color="warning"
+          value={totalUnfilled}
+          color={totalUnfilled > 0 ? "danger" : "success"}
         />
       </div>
 
@@ -1856,8 +1850,9 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
         ) : (
           <div className="space-y-3">
             {roles.map((role) => {
-              const filled = Math.floor(role.qty_needed * 0.7); // Placeholder
-              const fillPercentage = (filled / role.qty_needed) * 100;
+              const roleShifts = eventShifts.filter(s => s.role === role.role_name);
+              const filled = roleShifts.length;
+              const fillPercentage = role.qty_needed > 0 ? (filled / role.qty_needed) * 100 : 0;
               const statusColor =
                 fillPercentage >= 80
                   ? BRAND.success
@@ -2220,7 +2215,7 @@ const SkillsTagsPage = ({ employees = [], skills = [], employeeSkills = [], onRe
                         <p className="text-sm font-medium" style={{ color: BRAND.text }}>
                           {es.skills?.name}
                         </p>
-                        <Badge color="info" variant="outline">
+                        <Badge color="primary" variant="outline">
                           {es.proficiency || "Intermediate"}
                         </Badge>
                       </div>
@@ -2395,7 +2390,7 @@ const PayrollPage = ({ employees = [], events = [], locations = [], shifts = [] 
             icon={Briefcase}
             label="Hours"
             value={`${(periodPayroll.reduce((sum, p) => sum + parseFloat(p.hours || 0), 0)).toFixed(1)}h`}
-            color="info"
+            color="primary"
           />
           <StatCard
             icon={DollarSign}
@@ -2493,7 +2488,7 @@ const ReportsPage = ({ employees = [], events = [], shifts = [], historicSales =
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatCard icon={Users} label="Total Staff" value={employees.length} color="primary" />
-        <StatCard icon={Calendar} label="Total Shifts" value={events.length} color="info" />
+        <StatCard icon={Calendar} label="Total Shifts" value={events.length} color="primary" />
         <StatCard
           icon={DollarSign}
           label="YTD Payroll"
