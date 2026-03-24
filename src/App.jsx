@@ -1215,9 +1215,9 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
 // PAGES: SHIFT BUILDER
 // ============================================================================
 
-const ShiftBuilderPage = ({ events = [], employees = [], shifts = [], locations = [], roleRequirements = [] }) => {
+const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts = [], locations = [], roleRequirements = [] }) => {
   const [selectedEvent, setSelectedEvent] = useState(events[0]?.id || "");
-  const [shifts, setShifts] = useState([]);
+  const [draftShifts, setDraftShifts] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newShift, setNewShift] = useState({
     employee_id: "",
@@ -1231,8 +1231,8 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts = [], locations 
 
   const handleAddShift = () => {
     if (newShift.employee_id && newShift.start_time && newShift.end_time) {
-      setShifts([
-        ...shifts,
+      setDraftShifts([
+        ...draftShifts,
         {
           id: Date.now(),
           event_id: selectedEvent,
@@ -1250,7 +1250,7 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts = [], locations 
   };
 
   const handleRemoveShift = (id) => {
-    setShifts(shifts.filter((s) => s.id !== id));
+    setDraftShifts(draftShifts.filter((s) => s.id !== id));
   };
 
   return (
@@ -1265,7 +1265,7 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts = [], locations 
             value={selectedEvent}
             onChange={(e) => {
               setSelectedEvent(e.target.value);
-              setShifts([]);
+              setDraftShifts([]);
             }}
             options={events.map((e) => ({
               value: e.id,
@@ -1298,11 +1298,11 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts = [], locations 
       </div>
 
       <SectionCard title="Assigned Shifts" icon={Clock}>
-        {shifts.length === 0 ? (
+        {draftShifts.length === 0 ? (
           <EmptyState title="No shifts assigned" message="Add shifts using the form below" />
         ) : (
           <div className="space-y-2">
-            {shifts.map((shift) => {
+            {draftShifts.map((shift) => {
               const employee = employees.find((e) => e.id === shift.employee_id);
               return (
                 <div
