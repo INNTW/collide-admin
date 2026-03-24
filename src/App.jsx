@@ -4,9 +4,58 @@ import { Calendar, Users, MapPin, DollarSign, Clock, Plus, Printer, Search, Chev
 import { supabase } from "./lib/supabase";
 
 // ============================================================
-// COLLIDE APPAREL — Staff & Inventory Manager v3.0
-// Auth + Roles + CRA Tax Engine + T4 Generation
+// COLLIDE APPAREL — Staff & Inventory Manager v4.0
+// Auth + Roles + CRA Tax Engine + T4 + SIN Encryption + Realtime
 // ============================================================
+
+// ── SIN Encryption (AES-256-GCM via Web Crypto API) ──
+const SINEncryption = {
+  // Derive a deterministic AES-256 key from a passphrase + salt
+  deriveKey: async (passphrase, salt) => {
+    const enc = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey("raw", enc.encode(passphrase), "PBKDF2", false, ["deriveKey"]);
+    return crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt: enc.encode(salt), iterations: 100000, hash: "SHA-256" },
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"]
+    );
+  },
+
+  encrypt: async (plainSIN, passphrase, userId) => {
+    try {
+      const key = await SINEncryption.deriveKey(passphrase, userId);
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const enc = new TextEncoder();
+      const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, enc.encode(plainSIN));
+      const combined = new Uint8Array(iv.length + new Uint8Array(ciphertext).length);
+      combined.set(iv);
+      combined.set(new Uint8Array(ciphertext), iv.length);
+      return btoa(String.fromCharCode(...combined));
+    } catch (e) { console.error("SIN encrypt error:", e); return null; }
+  },
+
+  decrypt: async (encryptedB64, passphrase, userId) => {
+    try {
+      const key = await SINEncryption.deriveKey(passphrase, userId);
+      const combined = new Uint8Array(atob(encryptedB64).split("").map(c => c.charCodeAt(0)));
+      const iv = combined.slice(0, 12);
+      const ciphertext = combined.slice(12);
+      const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
+      return new TextDecoder().decode(decrypted);
+    } catch (e) { console.error("SIN decrypt error:", e); return null; }
+  },
+
+  // Mask SIN for display: 123-456-789 → ***-***-789
+  mask: (sin) => sin ? `***-***-${sin.replace(/\D/g, "").slice(-3)}` : "***-***-***",
+
+  // Validate SIN format (9 digits, with or without dashes)
+  validate: (sin) => /^\d{3}-?\d{3}-?\d{3}$/.test(sin.trim()),
+
+  // Format SIN with dashes
+  format: (sin) => { const d = sin.replace(/\D/g, ""); return d.length === 9 ? `${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6)}` : sin; },
+};
 
 // BRAND CONFIGURATION — Glassmorphism Dark Theme
 const BRAND = {
@@ -389,7 +438,7 @@ const Modal = ({ open, onClose, title, children, wide }) => {
   if (!open) return null;
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: "32px", background: "rgba(0, 0, 0, 0.6)", overflowY: "auto" }} onClick={onClose}>
-      <div style={{ background: BRAND.gradient, borderRadius: "16px", boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5)", width: "100%", maxWidth: wide ? "56rem" : "28rem", maxHeight: "88vh", overflowY: "auto", margin: "16px" }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: BRAND.gradient, borderRadius: "16px", boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.5)", width: "calc(100% - 32px)", maxWidth: wide ? "56rem" : "28rem", maxHeight: "88vh", overflowY: "auto", margin: "16px" }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px", borderBottom: `1px solid ${BRAND.glass.border}`, position: "sticky", top: 0, background: BRAND.gradient, borderRadius: "16px 16px 0 0", zIndex: 10 }}>
           <h2 style={{ fontSize: "18px", fontWeight: "600", color: BRAND.colors.brightBlue }}>{title}</h2>
           <button onClick={onClose} style={{ padding: "4px", background: "none", border: "none", cursor: "pointer", color: BRAND.colors.lightText }}><X size={20} /></button>
@@ -568,24 +617,41 @@ const EmployeesPage = ({ employees, setEmployees, availability, setAvailability,
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState(null);
   const [showMatrix, setShowMatrix] = useState(false);
-  const [formData, setFormData] = useState({ first_name: "", last_name: "", email: "", phone: "", hourly_rate: 18, status: "active" });
+  const [formData, setFormData] = useState({ first_name: "", last_name: "", email: "", phone: "", hourly_rate: 18, status: "active", sin_plain: "", date_of_birth: "", address: "", city: "", province: "ON", postal_code: "" });
+  const [showSIN, setShowSIN] = useState({});
+  const [decryptedSINs, setDecryptedSINs] = useState({});
 
   const handleSave = async () => {
+    const saveData = { ...formData };
+    // Encrypt SIN if provided
+    if (saveData.sin_plain && SINEncryption.validate(saveData.sin_plain)) {
+      const formatted = SINEncryption.format(saveData.sin_plain);
+      const encrypted = await SINEncryption.encrypt(formatted, "collide-sin-key-2026", saveData.email || "default");
+      if (encrypted) { saveData.sin_encrypted = encrypted; saveData.sin_last3 = formatted.replace(/\D/g, "").slice(-3); }
+    }
+    delete saveData.sin_plain;
     if (editId) {
-      const { error } = await supabase.from("employees").update(formData).eq("id", editId);
-      if (!error) setEmployees(employees.map(e => e.id === editId ? { ...e, ...formData } : e));
+      const { error } = await supabase.from("employees").update(saveData).eq("id", editId);
+      if (!error) setEmployees(employees.map(e => e.id === editId ? { ...e, ...saveData } : e));
     } else {
-      const newEmp = { ...formData, role: "sales", td1_federal_claim: 16452, td1_provincial_claim: 12989, tax_province: "ON" };
+      const newEmp = { ...saveData, role: "sales", td1_federal_claim: 16452, td1_provincial_claim: 12989, tax_province: saveData.province || "ON" };
       const { data, error } = await supabase.from("employees").insert(newEmp).select().single();
       if (!error && data) setEmployees([...employees, data]);
     }
     setShowForm(false);
     setEditId(null);
-    setFormData({ first_name: "", last_name: "", email: "", phone: "", hourly_rate: 18, status: "active" });
+    setFormData({ first_name: "", last_name: "", email: "", phone: "", hourly_rate: 18, status: "active", sin_plain: "", date_of_birth: "", address: "", city: "", province: "ON", postal_code: "" });
+  };
+
+  const handleRevealSIN = async (emp) => {
+    if (decryptedSINs[emp.id]) { setShowSIN(prev => ({ ...prev, [emp.id]: !prev[emp.id] })); return; }
+    if (!emp.sin_encrypted || emp.sin_encrypted === "***-***-***") return;
+    const decrypted = await SINEncryption.decrypt(emp.sin_encrypted, "collide-sin-key-2026", emp.email || "default");
+    if (decrypted) { setDecryptedSINs(prev => ({ ...prev, [emp.id]: decrypted })); setShowSIN(prev => ({ ...prev, [emp.id]: true })); }
   };
 
   const handleEdit = (e) => {
-    setFormData(e);
+    setFormData({ ...e, sin_plain: "" });
     setEditId(e.id);
     setShowForm(true);
   };
@@ -648,6 +714,15 @@ const EmployeesPage = ({ employees, setEmployees, availability, setAvailability,
               <div style={{ fontSize: "12px", color: BRAND.colors.mutedText }}>
                 <div>{e.email}</div>
                 <div>{e.phone}</div>
+                {e.sin_encrypted && e.sin_encrypted !== "***-***-***" && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
+                    <Lock size={11} />
+                    <span>SIN: {showSIN[e.id] && decryptedSINs[e.id] ? decryptedSINs[e.id] : `***-***-${e.sin_last3 || "***"}`}</span>
+                    <button onClick={() => handleRevealSIN(e)} style={{ background: "none", border: "none", cursor: "pointer", color: BRAND.colors.brightBlue, padding: 0 }}>
+                      {showSIN[e.id] ? <EyeOff size={12} /> : <Eye size={12} />}
+                    </button>
+                  </div>
+                )}
                 <div style={{ marginTop: "8px", paddingTop: "8px", borderTop: `1px solid ${BRAND.glass.border}` }}>
                   <div style={{ color: BRAND.colors.lightText }}>Rate: {currency(e.hourly_rate)}/hr</div>
                   <Badge status={e.status} />
@@ -658,12 +733,27 @@ const EmployeesPage = ({ employees, setEmployees, availability, setAvailability,
         </div>
       )}
 
-      <Modal open={showForm} onClose={() => { setShowForm(false); setEditId(null); }} title={editId ? "Edit Employee" : "Add Employee"}>
+      <Modal open={showForm} onClose={() => { setShowForm(false); setEditId(null); }} title={editId ? "Edit Employee" : "Add Employee"} wide>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
           <Input label="First Name" value={formData.first_name} onChange={(e) => setFormData({ ...formData, first_name: e.target.value })} />
           <Input label="Last Name" value={formData.last_name} onChange={(e) => setFormData({ ...formData, last_name: e.target.value })} />
           <Input label="Email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} />
           <Input label="Phone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
+          <Input label="Date of Birth" type="date" value={formData.date_of_birth || ""} onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })} />
+          <div style={{ marginBottom: "12px" }}>
+            <label style={{ display: "block", fontSize: "12px", fontWeight: "500", color: BRAND.colors.lightText, marginBottom: "4px" }}>SIN (encrypted at rest)</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <input type="password" value={formData.sin_plain || ""} onChange={(e) => setFormData({ ...formData, sin_plain: e.target.value })} placeholder="123-456-789" style={{ flex: 1, padding: "8px 12px", background: BRAND.glass.background, border: `1px solid ${BRAND.glass.border}`, borderRadius: "8px", fontSize: "14px", color: BRAND.colors.lightText, outline: "none" }} />
+              <Lock size={16} style={{ color: BRAND.colors.brightBlue, flexShrink: 0 }} title="AES-256-GCM encrypted" />
+            </div>
+            {formData.sin_plain && !SINEncryption.validate(formData.sin_plain) && formData.sin_plain.length > 0 && (
+              <div style={{ fontSize: "11px", color: "#fca5a5", marginTop: "4px" }}>Enter 9 digits (e.g. 123-456-789)</div>
+            )}
+          </div>
+          <Input label="Address" value={formData.address || ""} onChange={(e) => setFormData({ ...formData, address: e.target.value })} />
+          <Input label="City" value={formData.city || ""} onChange={(e) => setFormData({ ...formData, city: e.target.value })} />
+          <Select label="Province" value={formData.province || "ON"} onChange={(e) => setFormData({ ...formData, province: e.target.value })} options={provinces} />
+          <Input label="Postal Code" value={formData.postal_code || ""} onChange={(e) => setFormData({ ...formData, postal_code: e.target.value })} />
           <Input label="Hourly Rate" type="number" value={formData.hourly_rate} onChange={(e) => setFormData({ ...formData, hourly_rate: parseFloat(e.target.value) || 18 })} />
           <Select label="Status" value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} options={["active", "inactive", "onboarding"]} />
         </div>
@@ -1341,7 +1431,7 @@ const CommandPalette = ({ open, onClose, navItems, onNavigate }) => {
   if (!open) return null;
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 100, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: "20vh", background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }} onClick={onClose}>
-      <div style={{ width: 520, background: "rgba(0,20,40,0.95)", border: `1px solid ${BRAND.glass.border}`, borderRadius: 16, overflow: "hidden", backdropFilter: "blur(20px)", boxShadow: `0 24px 48px rgba(0,0,0,0.4), 0 0 0 1px ${BRAND.glass.border}` }} onClick={e => e.stopPropagation()}>
+      <div style={{ width: "90%", maxWidth: 520, background: "rgba(0,20,40,0.95)", border: `1px solid ${BRAND.glass.border}`, borderRadius: 16, overflow: "hidden", backdropFilter: "blur(20px)", boxShadow: `0 24px 48px rgba(0,0,0,0.4), 0 0 0 1px ${BRAND.glass.border}` }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", borderBottom: `1px solid ${BRAND.glass.border}` }}>
           <Search size={18} style={{ color: BRAND.colors.mutedText, flexShrink: 0 }} />
           <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search pages, actions..." style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: BRAND.colors.lightText, fontSize: 15 }} />
@@ -1459,6 +1549,38 @@ export default function App() {
     await loadData();
   };
 
+  // ── Supabase Realtime: notifications, shifts, employees ──
+  useEffect(() => {
+    if (!currentUser) return;
+    const channel = supabase.channel("realtime-all")
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, (payload) => {
+        if (payload.eventType === "INSERT") setNotifications(prev => [...prev, payload.new]);
+        else if (payload.eventType === "UPDATE") setNotifications(prev => prev.map(n => n.id === payload.new.id ? payload.new : n));
+        else if (payload.eventType === "DELETE") setNotifications(prev => prev.filter(n => n.id !== payload.old.id));
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "shifts" }, (payload) => {
+        if (payload.eventType === "INSERT") setShifts(prev => [...prev, payload.new]);
+        else if (payload.eventType === "UPDATE") setShifts(prev => prev.map(s => s.id === payload.new.id ? payload.new : s));
+        else if (payload.eventType === "DELETE") setShifts(prev => prev.filter(s => s.id !== payload.old.id));
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "employees" }, (payload) => {
+        if (payload.eventType === "INSERT") setEmployees(prev => [...prev, payload.new]);
+        else if (payload.eventType === "UPDATE") setEmployees(prev => prev.map(e => e.id === payload.new.id ? payload.new : e));
+        else if (payload.eventType === "DELETE") setEmployees(prev => prev.filter(e => e.id !== payload.old.id));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [currentUser]);
+
+  // ── Mobile sidebar state ──
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(typeof window !== "undefined" && window.innerWidth < 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   // Cmd+K keyboard shortcut
   useEffect(() => {
     const handler = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "k") { e.preventDefault(); setCmdkOpen(o => !o); } if (e.key === "Escape") setCmdkOpen(false); };
@@ -1499,20 +1621,27 @@ export default function App() {
 
   const visibleNav = isAdmin ? navItems : navItems.filter(n => ["dashboard", "notifications"].includes(n.id));
   const unsentNotifs = notifications.filter(n => n.status === "draft").length;
-  const sidebarWidth = sidebarCollapsed ? 72 : 240;
+  const sidebarWidth = isMobile ? 240 : (sidebarCollapsed ? 72 : 240);
 
   return (
     <div style={{ display: "flex", height: "100vh", background: BRAND.gradient, fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", position: "relative", overflow: "hidden" }}>
       {/* Ambient glow orbs */}
-      <div style={{ position: "absolute", top: -120, right: -120, width: 450, height: 450, background: "radial-gradient(circle, rgba(84,205,249,0.12) 0%, transparent 70%)", pointerEvents: "none" }} />
-      <div style={{ position: "absolute", bottom: -180, left: "25%", width: 550, height: 550, background: "radial-gradient(circle, rgba(84,205,249,0.06) 0%, transparent 70%)", pointerEvents: "none" }} />
+      {!isMobile && <div style={{ position: "absolute", top: -120, right: -120, width: 450, height: 450, background: "radial-gradient(circle, rgba(84,205,249,0.12) 0%, transparent 70%)", pointerEvents: "none" }} />}
+      {!isMobile && <div style={{ position: "absolute", bottom: -180, left: "25%", width: 550, height: 550, background: "radial-gradient(circle, rgba(84,205,249,0.06) 0%, transparent 70%)", pointerEvents: "none" }} />}
+
+      {/* Mobile overlay backdrop */}
+      {isMobile && mobileMenuOpen && (
+        <div onClick={() => setMobileMenuOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 15 }} />
+      )}
 
       {/* ── Collapsible Sidebar (Layout A) ── */}
       <aside style={{
         width: sidebarWidth, flexShrink: 0, display: "flex", flexDirection: "column", overflow: "hidden",
-        background: "rgba(0,15,30,0.6)", borderRight: `1px solid ${BRAND.glass.border}`,
+        background: "rgba(0,15,30,0.95)", borderRight: `1px solid ${BRAND.glass.border}`,
         backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-        transition: "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)", zIndex: 10,
+        transition: isMobile ? "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)" : "width 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+        zIndex: 20,
+        ...(isMobile ? { position: "fixed", top: 0, left: 0, bottom: 0, transform: mobileMenuOpen ? "translateX(0)" : "translateX(-100%)" } : {}),
       }}>
         {/* Logo */}
         <div style={{ padding: sidebarCollapsed ? "20px 16px" : "20px 24px", borderBottom: `1px solid ${BRAND.glass.border}`, display: "flex", alignItems: "center", gap: 12, minHeight: 64 }}>
@@ -1532,7 +1661,7 @@ export default function App() {
             const isHovered = hoveredNav === item.id;
             return (
               <button key={item.id}
-                onClick={() => setPage(item.id)}
+                onClick={() => { setPage(item.id); if (isMobile) setMobileMenuOpen(false); }}
                 onMouseOver={() => setHoveredNav(item.id)}
                 onMouseOut={() => setHoveredNav(null)}
                 style={{
@@ -1577,12 +1706,14 @@ export default function App() {
           >
             <LogOut size={15} />{!sidebarCollapsed && "Sign Out"}
           </button>
-          <button onClick={() => setSidebarCollapsed(c => !c)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "8px", marginTop: 4, borderRadius: 8, border: "none", background: "rgba(255,255,255,0.04)", color: BRAND.colors.mutedText, fontSize: 12, cursor: "pointer", transition: "all 0.2s" }}
-            onMouseOver={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
-            onMouseOut={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
-          >
-            {sidebarCollapsed ? "→" : "← Collapse"}
-          </button>
+          {!isMobile && (
+            <button onClick={() => setSidebarCollapsed(c => !c)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "8px", marginTop: 4, borderRadius: 8, border: "none", background: "rgba(255,255,255,0.04)", color: BRAND.colors.mutedText, fontSize: 12, cursor: "pointer", transition: "all 0.2s" }}
+              onMouseOver={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; }}
+              onMouseOut={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+            >
+              {sidebarCollapsed ? "→" : "← Collapse"}
+            </button>
+          )}
         </div>
       </aside>
 
@@ -1590,33 +1721,47 @@ export default function App() {
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zIndex: 5 }}>
         {/* ── Top Bar (Layout C search bar) ── */}
         <div style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
-          padding: "0 32px", height: 56, flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: isMobile ? 8 : 16,
+          padding: isMobile ? "0 12px" : "0 32px", height: 56, flexShrink: 0,
           background: "rgba(0,15,30,0.4)", borderBottom: `1px solid ${BRAND.glass.border}`,
           backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
         }}>
-          {/* Page title */}
-          <div style={{ fontSize: 14, fontWeight: 600, color: BRAND.colors.white, textTransform: "capitalize" }}>
-            {page === "paysheets" ? "Payroll" : page}
+          {/* Mobile hamburger + Page title */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {isMobile && (
+              <button onClick={() => setMobileMenuOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: BRAND.colors.lightText, display: "flex" }}>
+                <Layers size={20} />
+              </button>
+            )}
+            <div style={{ fontSize: 14, fontWeight: 600, color: BRAND.colors.white, textTransform: "capitalize" }}>
+              {page === "paysheets" ? "Payroll" : page}
+            </div>
           </div>
 
-          {/* Search bar */}
-          <button onClick={() => setCmdkOpen(true)} style={{
-            display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", width: 300,
-            background: "rgba(255,255,255,0.06)", border: `1px solid ${BRAND.glass.border}`, borderRadius: 10,
-            cursor: "pointer", transition: "all 0.2s",
-          }}
-            onMouseOver={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; }}
-            onMouseOut={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
-          >
-            <Search size={14} style={{ color: BRAND.colors.mutedText }} />
-            <span style={{ flex: 1, textAlign: "left", color: BRAND.colors.mutedText, fontSize: 12 }}>Search...</span>
-            <kbd style={{ padding: "2px 6px", borderRadius: 5, background: "rgba(255,255,255,0.06)", border: `1px solid ${BRAND.glass.border}`, color: BRAND.colors.mutedText, fontSize: 10 }}>⌘K</kbd>
-          </button>
+          {/* Search bar — hidden on mobile */}
+          {!isMobile && (
+            <button onClick={() => setCmdkOpen(true)} style={{
+              display: "flex", alignItems: "center", gap: 10, padding: "8px 16px", width: 300,
+              background: "rgba(255,255,255,0.06)", border: `1px solid ${BRAND.glass.border}`, borderRadius: 10,
+              cursor: "pointer", transition: "all 0.2s",
+            }}
+              onMouseOver={e => { e.currentTarget.style.background = "rgba(255,255,255,0.1)"; }}
+              onMouseOut={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+            >
+              <Search size={14} style={{ color: BRAND.colors.mutedText }} />
+              <span style={{ flex: 1, textAlign: "left", color: BRAND.colors.mutedText, fontSize: 12 }}>Search...</span>
+              <kbd style={{ padding: "2px 6px", borderRadius: 5, background: "rgba(255,255,255,0.06)", border: `1px solid ${BRAND.glass.border}`, color: BRAND.colors.mutedText, fontSize: 10 }}>⌘K</kbd>
+            </button>
+          )}
 
           {/* Right side: notification bell + user avatar */}
-          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-            <button onClick={() => setPage("notifications")} style={{ position: "relative", background: "none", border: "none", cursor: "pointer", padding: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 10 : 16 }}>
+            {isMobile && (
+              <button onClick={() => setCmdkOpen(true)} style={{ background: "none", border: "none", cursor: "pointer", padding: 4 }}>
+                <Search size={18} style={{ color: BRAND.colors.mutedText }} />
+              </button>
+            )}
+            <button onClick={() => { setPage("notifications"); if (isMobile) setMobileMenuOpen(false); }} style={{ position: "relative", background: "none", border: "none", cursor: "pointer", padding: 4 }}>
               <Bell size={18} style={{ color: BRAND.colors.mutedText }} />
               {unsentNotifs > 0 && <div style={{ position: "absolute", top: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: "#ef4444", border: `2px solid ${BRAND.colors.navy}` }} />}
             </button>
@@ -1627,7 +1772,7 @@ export default function App() {
         </div>
 
         {/* ── Page Content ── */}
-        <main style={{ flex: 1, padding: 32, overflowY: "auto" }}>
+        <main style={{ flex: 1, padding: isMobile ? 12 : 32, overflowY: "auto" }}>
           {isAdmin ? (
             <>
               {page === "dashboard" && <DashboardPage employees={employees} events={events} locations={locations} shifts={shifts} availability={availability} products={products} stock={stock} historicSales={historicSales} />}
@@ -1648,7 +1793,7 @@ export default function App() {
       {/* ── Command Palette ── */}
       <CommandPalette open={cmdkOpen} onClose={() => setCmdkOpen(false)} navItems={visibleNav} onNavigate={setPage} />
 
-      <style>{`html, body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: ${BRAND.gradient}; color: ${BRAND.colors.lightText}; } ::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; } ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); } @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+      <style>{`html, body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: ${BRAND.gradient}; color: ${BRAND.colors.lightText}; } ::-webkit-scrollbar { width: 6px; height: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; } ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); } @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } } @media (max-width: 768px) { .stat-grid { grid-template-columns: 1fr 1fr !important; } .card-grid { grid-template-columns: 1fr !important; } } @media (max-width: 480px) { .stat-grid { grid-template-columns: 1fr !important; } }`}</style>
     </div>
   );
 }
