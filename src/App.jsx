@@ -2404,9 +2404,14 @@ export default function App() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
+        // Timeout wrapper — if getSession hangs (orphaned lock), recover gracefully
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Auth session check timed out")), 8000)
+        );
         const {
           data: { session },
-        } = await supabase.auth.getSession();
+        } = await Promise.race([sessionPromise, timeoutPromise]);
         if (session?.user) {
           setUser(session.user);
           await loadData();
