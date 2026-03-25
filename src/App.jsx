@@ -181,6 +181,7 @@ const NAV_TREE = {
         { id: "shift-builder", label: "Shift Builder", page: "shift-builder" },
         { id: "role-requirements", label: "Role Requirements", page: "role-requirements" },
         { id: "availability", label: "Availability", page: "availability" },
+        { id: "my-shifts", label: "My Shifts", page: "my-shifts" },
       ],
     },
     {
@@ -203,6 +204,7 @@ const NAV_TREE = {
         { id: "products", label: "Products", page: "products" },
         { id: "stock", label: "Stock & Distribution", page: "stock" },
         { id: "inv-analytics", label: "Analytics", page: "inv-analytics" },
+        { id: "inv-projections", label: "Projections", page: "inv-projections" },
       ],
     },
     {
@@ -2337,6 +2339,168 @@ const AvailabilityPage = ({ employees = [], events = [], availability: initialAv
 };
 
 // ============================================================================
+// PAGES: MY SHIFTS
+// ============================================================================
+
+const MyShiftsPage = ({ employees = [], events = [], shifts = [], user, locations = [] }) => {
+  const [viewMode, setViewMode] = useState("upcoming"); // upcoming, past, all
+
+  // Find the current logged-in employee
+  const currentEmployee = employees.find(e => e.email === user?.email);
+
+  // Get shifts for this employee
+  const myShifts = useMemo(() => {
+    if (!currentEmployee) return [];
+    return shifts
+      .filter(s => s.employee_id === currentEmployee.id)
+      .map(s => {
+        const event = events.find(e => e.id === s.event_id);
+        const location = event ? locations.find(l => l.id === event.location_id) : null;
+        return { ...s, event, location };
+      })
+      .sort((a, b) => {
+        const dateA = a.event?.start_date || "";
+        const dateB = b.event?.start_date || "";
+        return dateA.localeCompare(dateB);
+      });
+  }, [currentEmployee, shifts, events, locations]);
+
+  const now = new Date().toISOString().split("T")[0];
+  const upcomingShifts = myShifts.filter(s => s.event?.start_date >= now);
+  const pastShifts = myShifts.filter(s => s.event?.start_date < now);
+
+  const displayShifts = viewMode === "upcoming" ? upcomingShifts : viewMode === "past" ? pastShifts : myShifts;
+
+  // Total hours calculation
+  const totalUpcomingHours = upcomingShifts.reduce((sum, s) => {
+    if (s.start_time && s.end_time) {
+      const [sh, sm] = s.start_time.split(":").map(Number);
+      const [eh, em] = s.end_time.split(":").map(Number);
+      return sum + ((eh * 60 + em) - (sh * 60 + sm)) / 60;
+    }
+    return sum + 8;
+  }, 0);
+
+  // Group shifts by event
+  const shiftsByEvent = useMemo(() => {
+    const map = {};
+    displayShifts.forEach(s => {
+      const eventId = s.event?.id || "unassigned";
+      if (!map[eventId]) map[eventId] = { event: s.event, location: s.location, shifts: [] };
+      map[eventId].shifts.push(s);
+    });
+    return Object.values(map);
+  }, [displayShifts]);
+
+  if (!currentEmployee) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>My Shifts</h1>
+        <SectionCard title="Employee Not Found" icon={AlertCircle}>
+          <p className="text-sm" style={{ color: "rgba(224,230,255,0.7)" }}>
+            No employee profile found for your account ({user?.email}). Please contact an admin to link your account.
+          </p>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>My Shifts</h1>
+          <p className="text-sm mt-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+            Welcome, {currentEmployee.first_name}. Here are your assigned shifts.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {["upcoming", "past", "all"].map(mode => (
+            <button
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              className="px-3 py-1.5 rounded-lg text-sm capitalize transition"
+              style={{
+                background: viewMode === mode ? `${BRAND.primary}20` : "rgba(255,255,255,0.05)",
+                color: viewMode === mode ? BRAND.primary : "rgba(224,230,255,0.6)",
+                border: `1px solid ${viewMode === mode ? BRAND.primary : BRAND.glassBorder}`,
+              }}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Upcoming Shifts" value={upcomingShifts.length} icon={Calendar} color="primary" />
+        <StatCard label="Upcoming Hours" value={`${totalUpcomingHours.toFixed(1)}h`} icon={Clock} color="success" />
+        <StatCard label="Past Shifts" value={pastShifts.length} icon={FileText} color="warning" />
+        <StatCard label="Total Shifts" value={myShifts.length} icon={Star} color="primary" />
+      </div>
+
+      {shiftsByEvent.length === 0 ? (
+        <SectionCard title="No Shifts Found" icon={Calendar}>
+          <EmptyState
+            icon={Calendar}
+            title={viewMode === "upcoming" ? "No upcoming shifts" : viewMode === "past" ? "No past shifts" : "No shifts assigned"}
+            message="Shifts will appear here once you're assigned to events."
+          />
+        </SectionCard>
+      ) : (
+        shiftsByEvent.map((group, idx) => (
+          <SectionCard
+            key={group.event?.id || idx}
+            title={group.event?.name || "Unassigned"}
+            icon={Calendar}
+          >
+            <div className="mb-3 flex items-center gap-4 text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
+              {group.event?.start_date && (
+                <span>{group.event.start_date}{group.event.end_date && group.event.end_date !== group.event.start_date ? ` — ${group.event.end_date}` : ""}</span>
+              )}
+              {group.location && <span className="flex items-center gap-1"><MapPin size={12} />{group.location.name}</span>}
+              {group.event?.event_type && (
+                <span className="px-2 py-0.5 rounded-full" style={{ background: "rgba(84,205,249,0.15)", color: BRAND.primary }}>
+                  {EVENT_TYPE_DEFAULTS[group.event.event_type]?.label || group.event.event_type}
+                </span>
+              )}
+            </div>
+            <div className="space-y-2">
+              {group.shifts.map(shift => (
+                <div
+                  key={shift.id}
+                  className="flex items-center justify-between p-3 rounded-lg"
+                  style={{ background: "rgba(255,255,255,0.05)" }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: `${BRAND.primary}20` }}>
+                      <Clock size={18} style={{ color: BRAND.primary }} />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm" style={{ color: BRAND.text }}>
+                        {shift.start_time && shift.end_time
+                          ? `${shift.start_time.substring(0, 5)} — ${shift.end_time.substring(0, 5)}`
+                          : "Time TBD"}
+                      </p>
+                      {shift.role && (
+                        <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>Role: {shift.role}</p>
+                      )}
+                    </div>
+                  </div>
+                  <Badge color={shift.event?.start_date >= now ? "success" : "gray"}>
+                    {shift.event?.start_date >= now ? "Upcoming" : "Completed"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        ))
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
 // PAGES: PAYROLL
 // ============================================================================
 
@@ -3043,29 +3207,45 @@ const InventoryStockPage = ({ products = [], stock = {}, distributions = [], eve
   );
 };
 
-const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributions = [], stock = {} }) => {
-  const totalRevenue = historicSales.reduce((sum, s) => sum + Number(s.revenue || 0), 0);
-  const totalSold = historicSales.reduce((sum, s) => sum + (s.sold || 0), 0);
-  const totalSent = historicSales.reduce((sum, s) => sum + (s.sent || 0), 0);
+const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributions = [], stock = {}, events = [] }) => {
+  const [selectedProduct, setSelectedProduct] = useState("");
+  const [selectedEventType, setSelectedEventType] = useState("");
+  const [dateRange, setDateRange] = useState(90); // days to look back
+  const [minSellThrough, setMinSellThrough] = useState(0);
+  const [revenueThreshold, setRevenueThreshold] = useState(0);
+
+  // Filtered sales
+  const filteredSales = useMemo(() => {
+    let sales = historicSales;
+    if (selectedProduct) sales = sales.filter(s => s.product_id === selectedProduct);
+    if (selectedEventType) sales = sales.filter(s => s.event_type === selectedEventType);
+    return sales;
+  }, [historicSales, selectedProduct, selectedEventType]);
+  const totalRevenue = filteredSales.reduce((sum, s) => sum + Number(s.revenue || 0), 0);
+  const totalSold = filteredSales.reduce((sum, s) => sum + (s.sold || 0), 0);
+  const totalSent = filteredSales.reduce((sum, s) => sum + (s.sent || 0), 0);
   const sellThroughRate = totalSent > 0 ? ((totalSold / totalSent) * 100).toFixed(0) : 0;
   const avgRevenuePerUnit = totalSold > 0 ? (totalRevenue / totalSold) : 0;
 
-  // Revenue by event (for bar chart)
+  // Revenue by event
   const revenueByEvent = useMemo(() => {
     const map = {};
-    historicSales.forEach(s => {
+    filteredSales.forEach(s => {
       const name = s.event_name || "Unknown";
-      if (!map[name]) map[name] = { name, revenue: 0, sold: 0 };
+      if (!map[name]) map[name] = { name, revenue: 0, sold: 0, sent: 0 };
       map[name].revenue += Number(s.revenue || 0);
       map[name].sold += (s.sold || 0);
+      map[name].sent += (s.sent || 0);
     });
-    return Object.values(map).sort((a, b) => b.revenue - a.revenue).slice(0, 8);
-  }, [historicSales]);
+    return Object.values(map)
+      .filter(d => d.revenue >= revenueThreshold)
+      .sort((a, b) => b.revenue - a.revenue).slice(0, 10);
+  }, [filteredSales, revenueThreshold]);
 
   // Revenue by product (for pie chart)
   const revenueByProduct = useMemo(() => {
     const map = {};
-    historicSales.forEach(s => {
+    filteredSales.forEach(s => {
       const prod = products.find(p => p.id === s.product_id);
       const name = prod?.name || "Unknown";
       if (!map[name]) map[name] = { name, revenue: 0, sold: 0 };
@@ -3073,12 +3253,12 @@ const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributio
       map[name].sold += (s.sold || 0);
     });
     return Object.values(map).sort((a, b) => b.revenue - a.revenue);
-  }, [historicSales, products]);
+  }, [filteredSales, products]);
 
-  // Sell-through by product (for bar chart)
+  // Sell-through by product
   const sellThroughByProduct = useMemo(() => {
     const map = {};
-    historicSales.forEach(s => {
+    filteredSales.forEach(s => {
       const prod = products.find(p => p.id === s.product_id);
       const name = prod?.name || "Unknown";
       if (!map[name]) map[name] = { name, sent: 0, sold: 0 };
@@ -3088,8 +3268,22 @@ const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributio
     return Object.values(map).map(item => ({
       ...item,
       rate: item.sent > 0 ? Math.round((item.sold / item.sent) * 100) : 0,
-    })).sort((a, b) => b.rate - a.rate).slice(0, 8);
-  }, [historicSales, products]);
+    })).filter(item => item.rate >= minSellThrough).sort((a, b) => b.rate - a.rate).slice(0, 10);
+  }, [filteredSales, products, minSellThrough]);
+
+  // Stock health indicators
+  const stockHealth = useMemo(() => {
+    return products.filter(p => p.status === "active").map(p => {
+      const onHand = stock[p.id] || 0;
+      const dist = distributions.filter(d => d.product_id === p.id);
+      const totalSent = dist.reduce((s, d) => s + (d.qty_sent || 0), 0);
+      const totalSold = dist.reduce((s, d) => s + (d.qty_sold || 0), 0);
+      const totalReturned = dist.reduce((s, d) => s + (d.qty_returned || 0), 0);
+      const sellThrough = totalSent > 0 ? (totalSold / totalSent) * 100 : 0;
+      const daysOfStock = totalSold > 0 ? Math.round(onHand / (totalSold / 30)) : 999;
+      return { ...p, onHand, totalSent, totalSold, totalReturned, sellThrough, daysOfStock };
+    }).sort((a, b) => a.daysOfStock - b.daysOfStock);
+  }, [products, stock, distributions]);
 
   const COLORS_PIE = [BRAND.primary, BRAND.success, BRAND.warning, BRAND.danger, "#9C27B0", "#00BCD4", "#FF5722", "#607D8B"];
 
@@ -3097,12 +3291,104 @@ const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributio
     <div className="space-y-6">
       <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Inventory Analytics</h1>
 
+      {/* Filters Bar */}
+      <div className="rounded-xl p-4" style={{ background: BRAND.glass, border: `1px solid ${BRAND.glassBorder}`, backdropFilter: BRAND.blur }}>
+        <p className="text-xs font-semibold mb-3" style={{ color: BRAND.primary }}>FILTERS & PARAMETERS</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>Product</label>
+            <select value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg text-sm text-white focus:outline-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
+              <option value="">All Products</option>
+              {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>Event Type</label>
+            <select value={selectedEventType} onChange={(e) => setSelectedEventType(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg text-sm text-white focus:outline-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
+              <option value="">All Types</option>
+              {Object.entries(EVENT_TYPE_DEFAULTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+              Time Range: <span style={{ color: BRAND.primary }}>{dateRange} days</span>
+            </label>
+            <input type="range" min="7" max="365" step="7" value={dateRange}
+              onChange={(e) => setDateRange(parseInt(e.target.value))}
+              className="w-full" />
+          </div>
+          <div>
+            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+              Min Sell-Through: <span style={{ color: BRAND.primary }}>{minSellThrough}%</span>
+            </label>
+            <input type="range" min="0" max="100" step="5" value={minSellThrough}
+              onChange={(e) => setMinSellThrough(parseInt(e.target.value))}
+              className="w-full" />
+          </div>
+        </div>
+        <div className="mt-3">
+          <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+            Min Revenue Threshold: <span style={{ color: BRAND.primary }}>${revenueThreshold.toLocaleString()}</span>
+          </label>
+          <input type="range" min="0" max="50000" step="500" value={revenueThreshold}
+            onChange={(e) => setRevenueThreshold(parseInt(e.target.value))}
+            className="w-full" />
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Total Revenue" value={currency(totalRevenue)} icon={DollarSign} color="primary" />
         <StatCard label="Units Sold" value={totalSold} icon={Package} color="success" />
         <StatCard label="Sell-Through" value={`${sellThroughRate}%`} icon={TrendingUp} color="warning" />
         <StatCard label="Avg $/Unit" value={currency(avgRevenuePerUnit)} icon={BarChart3} color="primary" />
       </div>
+
+      {/* Stock Health Dashboard */}
+      <SectionCard title="Stock Health Dashboard" icon={Package}>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {stockHealth.map(item => {
+            const status = item.daysOfStock <= 7 ? "critical" : item.daysOfStock <= 30 ? "low" : "healthy";
+            const statusColor = status === "critical" ? BRAND.danger : status === "low" ? BRAND.warning : BRAND.success;
+            return (
+              <div key={item.id} className="rounded-lg p-3" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${BRAND.glassBorder}` }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-medium text-sm" style={{ color: BRAND.text }}>{item.name}</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full capitalize" style={{ background: `${statusColor}20`, color: statusColor }}>
+                    {status}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-1 text-center text-xs">
+                  <div>
+                    <p style={{ color: "rgba(224,230,255,0.5)" }}>On Hand</p>
+                    <p className="font-semibold" style={{ color: BRAND.text }}>{item.onHand}</p>
+                  </div>
+                  <div>
+                    <p style={{ color: "rgba(224,230,255,0.5)" }}>Sold</p>
+                    <p className="font-semibold" style={{ color: BRAND.success }}>{item.totalSold}</p>
+                  </div>
+                  <div>
+                    <p style={{ color: "rgba(224,230,255,0.5)" }}>Sell %</p>
+                    <p className="font-semibold" style={{ color: item.sellThrough >= 60 ? BRAND.success : BRAND.warning }}>{item.sellThrough.toFixed(0)}%</p>
+                  </div>
+                  <div>
+                    <p style={{ color: "rgba(224,230,255,0.5)" }}>Days Left</p>
+                    <p className="font-semibold" style={{ color: statusColor }}>{item.daysOfStock > 365 ? "365+" : item.daysOfStock}</p>
+                  </div>
+                </div>
+                {/* Mini progress bar for sell-through */}
+                <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, item.sellThrough)}%`, background: item.sellThrough >= 60 ? BRAND.success : item.sellThrough >= 30 ? BRAND.warning : BRAND.danger }} />
+                </div>
+              </div>
+            );
+          })}
+          {stockHealth.length === 0 && <EmptyState icon={Package} title="No active products" message="Add products to see stock health" />}
+        </div>
+      </SectionCard>
 
       {/* Revenue by Event */}
       <SectionCard title="Revenue by Event" icon={BarChart3}>
@@ -3174,6 +3460,244 @@ const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributio
           )}
         </SectionCard>
       </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// PAGES: INVENTORY PROJECTIONS
+// ============================================================================
+
+const InventoryProjectionsPage = ({ events = [], products = [], historicSales = [], stock = {}, distributions = [] }) => {
+  const [selectedEvent, setSelectedEvent] = useState("");
+  const [eventType, setEventType] = useState("festival");
+  const [eventDays, setEventDays] = useState(2);
+  const [expectedTraffic, setExpectedTraffic] = useState(500);
+  const [sellThroughOverride, setSellThroughOverride] = useState(0); // 0 = use defaults
+  const [growthFactor, setGrowthFactor] = useState(1.0);
+  const [bufferPercent, setBufferPercent] = useState(15); // extra stock buffer
+
+  // When an event is selected, pre-fill parameters
+  useEffect(() => {
+    if (selectedEvent) {
+      const event = events.find(e => e.id === selectedEvent);
+      if (event) {
+        const type = event.event_type || "festival";
+        setEventType(type);
+        if (event.start_date && event.end_date) {
+          const days = Math.max(1, Math.ceil((new Date(event.end_date) - new Date(event.start_date)) / (1000 * 60 * 60 * 24)) + 1);
+          setEventDays(days);
+        }
+      }
+    }
+  }, [selectedEvent, events]);
+
+  // Historic averages by product by event type
+  const productHistoricByType = useMemo(() => {
+    const map = {};
+    historicSales.forEach(s => {
+      const key = `${s.product_id}_${s.event_type || "other"}`;
+      if (!map[key]) map[key] = { sold: 0, sent: 0, revenue: 0, count: 0 };
+      map[key].sold += (s.sold || 0);
+      map[key].sent += (s.sent || 0);
+      map[key].revenue += Number(s.revenue || 0);
+      map[key].count++;
+    });
+    return map;
+  }, [historicSales]);
+
+  // Calculate projections for each product
+  const projections = useMemo(() => {
+    const defaults = EVENT_TYPE_DEFAULTS[eventType] || EVENT_TYPE_DEFAULTS.other;
+    const baseSellThrough = sellThroughOverride > 0 ? sellThroughOverride / 100 : defaults.sellThrough;
+
+    return products.filter(p => p.status === "active").map(product => {
+      const histKey = `${product.id}_${eventType}`;
+      const hist = productHistoricByType[histKey];
+
+      let projectedSold, projectedSent;
+      if (hist && hist.count > 0) {
+        // Use historic data scaled by growth
+        const avgSoldPerEvent = hist.sold / hist.count;
+        projectedSold = Math.round(avgSoldPerEvent * growthFactor * (eventDays / (defaults.avgDays || 1)));
+        projectedSent = baseSellThrough > 0 ? Math.round(projectedSold / baseSellThrough) : projectedSold;
+      } else {
+        // Estimate: traffic * conversion rate * days
+        const conversionRate = baseSellThrough * 0.1; // 10% of traffic * sell-through
+        projectedSold = Math.round(expectedTraffic * conversionRate * eventDays * growthFactor / products.filter(p => p.status === "active").length);
+        projectedSent = baseSellThrough > 0 ? Math.round(projectedSold / baseSellThrough) : projectedSold;
+      }
+
+      const sendWithBuffer = Math.round(projectedSent * (1 + bufferPercent / 100));
+      const onHand = stock[product.id] || 0;
+      const shortfall = Math.max(0, sendWithBuffer - onHand);
+      const projectedRevenue = projectedSold * Number(product.retail || 0);
+      const projectedCost = sendWithBuffer * Number(product.cost || 0);
+
+      return {
+        ...product,
+        projectedSold,
+        projectedSent,
+        sendWithBuffer,
+        onHand,
+        shortfall,
+        projectedRevenue,
+        projectedCost,
+        sellThrough: baseSellThrough,
+      };
+    });
+  }, [products, productHistoricByType, eventType, eventDays, expectedTraffic, sellThroughOverride, growthFactor, bufferPercent, stock]);
+
+  const totalSendQty = projections.reduce((s, p) => s + p.sendWithBuffer, 0);
+  const totalShortfall = projections.reduce((s, p) => s + p.shortfall, 0);
+  const totalProjectedRevenue = projections.reduce((s, p) => s + p.projectedRevenue, 0);
+  const totalProjectedCost = projections.reduce((s, p) => s + p.projectedCost, 0);
+
+  // Chart data
+  const chartData = projections.map(p => ({
+    name: p.name?.substring(0, 12) || "Product",
+    send: p.sendWithBuffer,
+    onHand: p.onHand,
+    shortfall: p.shortfall,
+  }));
+
+  const upcomingEvents = events.filter(e => e.start_date >= new Date().toISOString().split("T")[0]).sort((a, b) => a.start_date.localeCompare(b.start_date));
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Inventory Projections</h1>
+
+      {/* Parameter Controls */}
+      <div className="rounded-xl p-4" style={{ background: BRAND.glass, border: `1px solid ${BRAND.glassBorder}`, backdropFilter: BRAND.blur }}>
+        <p className="text-xs font-semibold mb-3" style={{ color: BRAND.primary }}>EVENT PARAMETERS</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>Select Existing Event (optional)</label>
+            <select value={selectedEvent} onChange={(e) => setSelectedEvent(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg text-sm text-white focus:outline-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
+              <option value="">— Custom Parameters —</option>
+              {upcomingEvents.map(e => <option key={e.id} value={e.id}>{e.name} ({e.start_date})</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>Event Type</label>
+            <select value={eventType} onChange={(e) => setEventType(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg text-sm text-white focus:outline-none"
+              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
+              {Object.entries(EVENT_TYPE_DEFAULTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+              Event Duration: <span style={{ color: BRAND.primary }}>{eventDays} day{eventDays > 1 ? "s" : ""}</span>
+            </label>
+            <input type="range" min="1" max="10" step="1" value={eventDays}
+              onChange={(e) => setEventDays(parseInt(e.target.value))}
+              className="w-full" />
+          </div>
+        </div>
+
+        <p className="text-xs font-semibold mb-3 mt-2" style={{ color: BRAND.primary }}>PROJECTION PARAMETERS</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+              Expected Traffic: <span style={{ color: BRAND.primary }}>{expectedTraffic.toLocaleString()}</span>
+            </label>
+            <input type="range" min="50" max="5000" step="50" value={expectedTraffic}
+              onChange={(e) => setExpectedTraffic(parseInt(e.target.value))}
+              className="w-full" />
+          </div>
+          <div>
+            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+              Growth Factor: <span style={{ color: BRAND.primary }}>{(growthFactor * 100).toFixed(0)}%</span>
+            </label>
+            <input type="range" min="0.5" max="3.0" step="0.05" value={growthFactor}
+              onChange={(e) => setGrowthFactor(parseFloat(e.target.value))}
+              className="w-full" />
+          </div>
+          <div>
+            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+              Sell-Through Override: <span style={{ color: BRAND.primary }}>{sellThroughOverride > 0 ? `${sellThroughOverride}%` : "Auto"}</span>
+            </label>
+            <input type="range" min="0" max="100" step="5" value={sellThroughOverride}
+              onChange={(e) => setSellThroughOverride(parseInt(e.target.value))}
+              className="w-full" />
+          </div>
+          <div>
+            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+              Stock Buffer: <span style={{ color: BRAND.primary }}>{bufferPercent}%</span>
+            </label>
+            <input type="range" min="0" max="50" step="5" value={bufferPercent}
+              onChange={(e) => setBufferPercent(parseInt(e.target.value))}
+              className="w-full" />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="Total to Send" value={totalSendQty} icon={Package} color="primary" />
+        <StatCard label="Shortfall" value={totalShortfall} icon={AlertCircle} color={totalShortfall > 0 ? "danger" : "success"} />
+        <StatCard label="Proj. Revenue" value={currency(totalProjectedRevenue)} icon={DollarSign} color="success" />
+        <StatCard label="Inventory Cost" value={currency(totalProjectedCost)} icon={DollarSign} color="warning" />
+      </div>
+
+      {/* Inventory vs Stock Chart */}
+      <SectionCard title="Required Inventory vs. On Hand" icon={BarChart3}>
+        {chartData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <XAxis dataKey="name" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} angle={-25} textAnchor="end" />
+              <YAxis tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} />
+              <Tooltip contentStyle={{ background: BRAND.navy, border: `1px solid ${BRAND.glassBorder}`, borderRadius: 8, color: BRAND.text }} />
+              <Legend />
+              <Bar dataKey="send" fill={BRAND.primary} name="Need to Send" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="onHand" fill={BRAND.success} name="On Hand" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="shortfall" fill={BRAND.danger} name="Shortfall" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <EmptyState icon={Package} title="No products" message="Add active products to see projections" />
+        )}
+      </SectionCard>
+
+      {/* Detailed Projections Table */}
+      <SectionCard title="Product-by-Product Projection" icon={FileText}>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
+                <th className="text-left py-3 px-3" style={{ color: BRAND.primary }}>Product</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Proj. Sold</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Send Qty</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>On Hand</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Shortfall</th>
+                <th className="text-right py-3 px-3" style={{ color: BRAND.primary }}>Proj. Revenue</th>
+                <th className="text-right py-3 px-3" style={{ color: BRAND.primary }}>Cost</th>
+                <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Sell-Through</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projections.map(p => (
+                <tr key={p.id} className="hover:bg-white/5 transition" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
+                  <td className="py-3 px-3 font-medium" style={{ color: BRAND.text }}>{p.name}</td>
+                  <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{p.projectedSold}</td>
+                  <td className="py-3 px-3 text-center font-semibold" style={{ color: BRAND.primary }}>{p.sendWithBuffer}</td>
+                  <td className="py-3 px-3 text-center" style={{ color: p.onHand >= p.sendWithBuffer ? BRAND.success : BRAND.warning }}>{p.onHand}</td>
+                  <td className="py-3 px-3 text-center font-semibold" style={{ color: p.shortfall > 0 ? BRAND.danger : BRAND.success }}>
+                    {p.shortfall > 0 ? `-${p.shortfall}` : "0"}
+                  </td>
+                  <td className="py-3 px-3 text-right" style={{ color: BRAND.success }}>{currency(p.projectedRevenue)}</td>
+                  <td className="py-3 px-3 text-right" style={{ color: BRAND.warning }}>{currency(p.projectedCost)}</td>
+                  <td className="py-3 px-3 text-center" style={{ color: BRAND.primary }}>{(p.sellThrough * 100).toFixed(0)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {projections.length === 0 && <EmptyState icon={Package} title="No active products" message="Add products to see inventory projections" />}
+        </div>
+      </SectionCard>
     </div>
   );
 };
@@ -4300,10 +4824,12 @@ export default function App() {
       directory: <DirectoryPage employees={employees} employeeSkills={employeeSkills} skills={skills} />,
       "skills-tags": <SkillsTagsPage employees={employees} skills={skills} employeeSkills={employeeSkills} onRefresh={loadData} />,
       availability: <AvailabilityPage employees={employees} events={events} availability={availability} onRefresh={loadData} />,
+      "my-shifts": <MyShiftsPage employees={employees} events={events} shifts={shifts} user={user} locations={locations} />,
       payroll: <PayrollPage employees={employees} events={events} locations={locations} shifts={shifts} />,
       products: <InventoryProductsPage products={products} stock={stock} onRefresh={loadData} />,
       stock: <InventoryStockPage products={products} stock={stock} distributions={distributions} events={events} onRefresh={loadData} />,
-      "inv-analytics": <InventoryAnalyticsPage historicSales={historicSales} products={products} distributions={distributions} stock={stock} />,
+      "inv-analytics": <InventoryAnalyticsPage historicSales={historicSales} products={products} distributions={distributions} stock={stock} events={events} />,
+      "inv-projections": <InventoryProjectionsPage events={events} products={products} historicSales={historicSales} stock={stock} distributions={distributions} />,
       "sales-projections": <SalesProjectionsPage events={events} products={products} historicSales={historicSales} stock={stock} distributions={distributions} />,
       "staffing-projections": <StaffingProjectionsPage events={events} employees={employees} shifts={shifts} roleRequirements={roleRequirements} historicSales={historicSales} />,
       "event-pnl": <EventPnLPage events={events} products={products} historicSales={historicSales} employees={employees} shifts={shifts} stock={stock} roleRequirements={roleRequirements} distributions={distributions} />,
