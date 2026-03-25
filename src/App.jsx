@@ -5115,10 +5115,16 @@ export default function App() {
     };
   }, []);
 
-  // Handle logout
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  // Handle logout — bypass supabase.auth.signOut() which triggers Web Locks bug
+  const handleLogout = () => {
+    try {
+      // Clear Supabase auth token from localStorage directly
+      const key = Object.keys(localStorage).find(k => k.startsWith("sb-") && k.endsWith("-auth-token"));
+      if (key) localStorage.removeItem(key);
+    } catch (e) { /* ignore */ }
     setUser(null);
+    setCurrentRole(null);
+    setRoleLoaded(false);
     setCurrentNav({ section: "dashboard", page: null });
   };
 
