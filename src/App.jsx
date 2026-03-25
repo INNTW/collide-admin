@@ -4585,18 +4585,16 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
   });
   const [resetPassword, setResetPassword] = useState("");
 
-  const EDGE_FN_URL = "admin-users";
+  const callEdgeFn = async (body) => {
+    const { data, error } = await supabase.functions.invoke("admin-users", { body });
+    if (error) throw error;
+    return data;
+  };
 
   const loadUsers = useCallback(async () => {
     setLoadingUsers(true);
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const token = session?.session?.access_token;
-      const res = await fetch(
-        `https://jediymydtrgxrnazizai.supabase.co/functions/v1/${EDGE_FN_URL}?action=list`,
-        { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
-      );
-      const json = await res.json();
+      const json = await callEdgeFn({ action: "list" });
       if (json.users) setUsers(json.users);
       else if (json.error) setActionMessage(`Error: ${json.error}`);
     } catch (err) {
@@ -4611,17 +4609,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
     if (!createForm.email || !createForm.password) return;
     setSaving(true);
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const token = session?.session?.access_token;
-      const res = await fetch(
-        `https://jediymydtrgxrnazizai.supabase.co/functions/v1/${EDGE_FN_URL}?action=create`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify(createForm),
-        }
-      );
-      const json = await res.json();
+      const json = await callEdgeFn({ action: "create", ...createForm });
       if (json.error) { setActionMessage(`Error: ${json.error}`); }
       else {
         setActionMessage("User created successfully");
@@ -4636,17 +4624,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
 
   const handleUpdateRole = async (employeeId, newRole) => {
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const token = session?.session?.access_token;
-      const res = await fetch(
-        `https://jediymydtrgxrnazizai.supabase.co/functions/v1/${EDGE_FN_URL}?action=update-role`,
-        {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ employee_id: employeeId, app_role: newRole }),
-        }
-      );
-      const json = await res.json();
+      const json = await callEdgeFn({ action: "update-role", employee_id: employeeId, app_role: newRole });
       if (json.error) setActionMessage(`Error: ${json.error}`);
       else { setActionMessage("Role updated"); loadUsers(); onRefresh?.(); }
     } catch (err) { setActionMessage(`Error: ${err.message}`); }
@@ -4654,17 +4632,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
 
   const handleToggleAccess = async (authUserId, disable) => {
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const token = session?.session?.access_token;
-      const res = await fetch(
-        `https://jediymydtrgxrnazizai.supabase.co/functions/v1/${EDGE_FN_URL}?action=toggle-access`,
-        {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ auth_user_id: authUserId, disable }),
-        }
-      );
-      const json = await res.json();
+      const json = await callEdgeFn({ action: "toggle-access", auth_user_id: authUserId, disable });
       if (json.error) setActionMessage(`Error: ${json.error}`);
       else { setActionMessage(disable ? "User disabled" : "User enabled"); loadUsers(); }
     } catch (err) { setActionMessage(`Error: ${err.message}`); }
@@ -4674,17 +4642,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
     if (!selectedUser || !resetPassword) return;
     setSaving(true);
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const token = session?.session?.access_token;
-      const res = await fetch(
-        `https://jediymydtrgxrnazizai.supabase.co/functions/v1/${EDGE_FN_URL}?action=reset-password`,
-        {
-          method: "PUT",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({ auth_user_id: selectedUser.id, new_password: resetPassword }),
-        }
-      );
-      const json = await res.json();
+      const json = await callEdgeFn({ action: "reset-password", auth_user_id: selectedUser.id, new_password: resetPassword });
       if (json.error) setActionMessage(`Error: ${json.error}`);
       else {
         setActionMessage("Password reset successfully");
