@@ -5113,6 +5113,19 @@ export default function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const unsubscribeRef = useRef(new Set());
 
+  // Reactive mobile detection (must be before any early returns to respect hooks rules)
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" && window.innerWidth < 768
+  );
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  useEffect(() => {
+    if (!isMobile) setMobileMenuOpen(false);
+  }, [isMobile]);
+
   // Check auth on mount
   useEffect(() => {
     const checkAuth = async () => {
@@ -5461,21 +5474,6 @@ export default function App() {
       </div>
     );
   }
-
-  // Reactive mobile detection
-  const [isMobile, setIsMobile] = useState(
-    typeof window !== "undefined" && window.innerWidth < 768
-  );
-  useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  // Close mobile menu on navigation or when switching to desktop
-  useEffect(() => {
-    if (!isMobile) setMobileMenuOpen(false);
-  }, [isMobile]);
 
   return (
     <div
