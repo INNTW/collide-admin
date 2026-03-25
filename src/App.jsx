@@ -927,8 +927,10 @@ const CommandPalette = ({ isOpen, onClose, pages, currentPage, onNavigate }) => 
 // ============================================================================
 
 const DashboardPage = ({ employees = [], events = [], locations = [], shifts = [], availability = {}, products = [], stock = {}, historicSales = [] }) => {
+  const today = new Date().toISOString().split("T")[0];
   const upcomingEvents = (events || [])
-    .filter((e) => new Date(e.start_date) >= new Date())
+    .filter((e) => e.end_date >= today)
+    .sort((a, b) => a.start_date.localeCompare(b.start_date))
     .slice(0, 5);
 
   const totalStaff = (employees || []).length;
@@ -1301,6 +1303,22 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
       {/* Location Modal */}
       <Modal isOpen={showLocationModal || !!editLocation} onClose={() => { setShowLocationModal(false); setEditLocation(null); resetLocForm(); }} title={editLocation ? "Edit Location" : "New Location"} size="md">
         <div className="space-y-1">
+          {!editLocation && (
+            <Select 
+              label="Copy from existing venue" 
+              value="" 
+              onChange={(e) => {
+                if (e.target.value) {
+                  const existing = locations.find(l => l.id === e.target.value);
+                  if (existing) {
+                    setLocForm({ ...locForm, name: existing.name, address: existing.address || "", city: existing.city || "", province: existing.province || "ON", notes: existing.notes || "" });
+                  }
+                }
+              }} 
+              options={[{ value: "", label: "None — create new" }, ...locations.map(l => ({ value: l.id, label: `${l.name}${l.address ? ' — ' + l.address : ''}` }))]} 
+              placeholder="Select venue to copy..." 
+            />
+          )}
           <Select label="Event" value={locForm.event_id} onChange={(e) => setLocForm({ ...locForm, event_id: e.target.value })} options={events.map(ev => ({ value: ev.id, label: ev.name }))} placeholder="Select event..." />
           <Input label="Location Name" value={locForm.name} onChange={(e) => setLocForm({ ...locForm, name: e.target.value })} placeholder="e.g. Main Stage Booth" />
           <Input label="Address" value={locForm.address} onChange={(e) => setLocForm({ ...locForm, address: e.target.value })} placeholder="123 Street..." />
@@ -1344,7 +1362,8 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
   const emptyDays = Array.from({ length: firstDay }, (_, i) => null);
 
   const getEventsForDate = (date) => {
-    return events.filter((e) => e.start_date === date.toISOString().split("T")[0]);
+    const d = date.toISOString().split("T")[0];
+    return events.filter((e) => d >= e.start_date && d <= e.end_date);
   };
 
   const handlePrevMonth = () => {
@@ -1358,16 +1377,15 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
   const monthName = currentDate.toLocaleString("en-US", { month: "long", year: "numeric" });
 
   if (viewMode === "day") {
+    const dayStr = selectedDay.toISOString().split("T")[0];
     const dayEvents = getEventsForDate(selectedDay);
-    const hours = Array.from({ length: 18 }, (_, i) => 6 + i); // 6AM to 11PM
+    const dayShifts = shifts.filter(s => s.shift_date === dayStr);
+    const hours = Array.from({ length: 18 }, (_, i) => 6 + i);
 
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <button
-            onClick={() => setViewMode("month")}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition"
-          >
+          <button onClick={() => setViewMode("month")} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition">
             <ChevronLeft size={18} style={{ color: BRAND.primary }} />
             <span style={{ color: BRAND.text }}>Back to Month</span>
           </button>
@@ -1377,54 +1395,58 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2">
-            <SectionCard title="Schedule" icon={Calendar}>
-              <div className="space-y-2">
-                {hours.map((hour) => {
-                  const hourEvents = dayEvents.filter((e) => {
-                    const startHour = parseInt(e.start_time.split(":")[0]);
-                    return startHour === hour;
-                  });
-
-                  return (
-                    <div key={hour} className="flex items-center gap-4">
-                      <div className="w-16 text-sm font-medium" style={{ color: "rgba(224,230,255,0.7)" }}>
-                        {String(hour).padStart(2, "0")}:00
-                      </div>
-                      <div className="flex-1 space-y-2">
-                        {hourEvents.map((event) => (
-                          <div
-                            key={event.id}
-                            className="p-3 rounded-lg cursor-pointer transition hover:bg-white/10"
-                            style={{ background: "rgba(84,205,249,0.2)", borderLeft: `4px solid ${BRAND.primary}` }}
-                            onClick={() => {
-                              setSelectedEvent(event);
-                              setSelectedSlot(event);
-                            }}
-                          >
-                            <p className="font-medium text-sm" style={{ color: BRAND.text }}>
-                              {event.name}
-                            </p>
-                            <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
-                              {formatTime(event.start_time)} - {formatTime(event.end_time)} • {event.staff_assigned || 0} staff
-                            </p>
-                          </div>
-                        ))}
-                        {hourEvents.length === 0 && (
-                          <button
-                            onClick={() => {
-                              setSelectedSlot({ hour, date: selectedDay });
-                              setAssignmentModalOpen(true);
-                            }}
-                            className="px-3 py-2 text-sm rounded-lg text-white/50 hover:bg-white/5 transition border border-white/10"
-                          >
-                            + Add event
-                          </button>
-                        )}
-                      </div>
+          <div className="lg:col-span-2 space-y-4">
+            {dayEvents.length > 0 && (
+              <SectionCard title={`Events (${dayEvents.length})`} icon={Calendar}>
+                <div className="space-y-2">
+                  {dayEvents.map(event => (
+                    <div key={event.id} className="p-3 rounded-lg" style={{ background: "rgba(84,205,249,0.15)", borderLeft: `4px solid ${BRAND.primary}` }}>
+                      <p className="font-medium text-sm" style={{ color: BRAND.text }}>{event.name}</p>
+                      <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
+                        {formatDate(event.start_date)} — {formatDate(event.end_date)} • {event.event_type || "event"}
+                      </p>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+              </SectionCard>
+            )}
+
+            <SectionCard title="Shift Schedule" icon={Clock}>
+              <div className="space-y-2">
+                {dayShifts.length === 0 ? (
+                  <EmptyState icon={Clock} title="No shifts" message="No shifts scheduled for this day" />
+                ) : (
+                  hours.map(hour => {
+                    const hourShifts = dayShifts.filter(s => {
+                      const startHour = parseInt(s.start_time?.split(":")[0]);
+                      return startHour === hour;
+                    });
+                    if (hourShifts.length === 0) return null;
+                    return (
+                      <div key={hour} className="flex items-start gap-4">
+                        <div className="w-16 text-sm font-medium flex-shrink-0 pt-1" style={{ color: "rgba(224,230,255,0.7)" }}>
+                          {String(hour).padStart(2, "0")}:00
+                        </div>
+                        <div className="flex-1 space-y-1">
+                          {hourShifts.map(shift => {
+                            const emp = employees.find(e => e.id === shift.employee_id);
+                            const evt = events.find(e => e.id === shift.event_id);
+                            return (
+                              <div key={shift.id} className="p-2 rounded-lg" style={{ background: "rgba(84,205,249,0.1)", borderLeft: `3px solid ${BRAND.primary}` }}>
+                                <p className="text-sm font-medium" style={{ color: BRAND.text }}>
+                                  {emp ? `${emp.first_name} ${emp.last_name}` : "Unassigned"} {shift.role ? `— ${shift.role}` : ""}
+                                </p>
+                                <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
+                                  {formatTime(shift.start_time)} - {formatTime(shift.end_time)} {evt ? `• ${evt.name}` : ""}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  }).filter(Boolean)
+                )}
               </div>
             </SectionCard>
           </div>
@@ -1435,18 +1457,12 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
                 <EmptyState title="No staff" message="Add employees first" />
               ) : (
                 <div className="space-y-2">
-                  {employees.slice(0, 8).map((emp) => (
-                    <div
-                      key={emp.id}
-                      className="p-2 rounded-lg text-sm cursor-pointer hover:bg-white/10 transition"
-                      style={{ background: "rgba(255,255,255,0.05)" }}
-                    >
+                  {employees.slice(0, 8).map(emp => (
+                    <div key={emp.id} className="p-2 rounded-lg text-sm cursor-pointer hover:bg-white/10 transition" style={{ background: "rgba(255,255,255,0.05)" }}>
                       <p style={{ color: BRAND.text }}>{emp.first_name} {emp.last_name}</p>
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {(employeeSkills.filter(es => es.employee_id === emp.id) || []).slice(0, 2).map((es) => (
-                          <Badge key={es.id} color="primary" variant="outline">
-                            {es.skills?.name || "Unknown"}
-                          </Badge>
+                        {(employeeSkills.filter(es => es.employee_id === emp.id) || []).slice(0, 2).map(es => (
+                          <Badge key={es.id} color="primary" variant="outline">{es.skills?.name || "Unknown"}</Badge>
                         ))}
                       </div>
                     </div>
@@ -5115,7 +5131,17 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Navigation State
-  const [currentNav, setCurrentNav] = useState({ section: "dashboard", page: null });
+  const [currentNav, setCurrentNav] = useState(() => {
+    const hash = window.location.hash.replace('#/', '');
+    if (hash) {
+      for (const section of NAV_TREE.sections) {
+        if (section.id === hash) return { section: hash, page: null };
+        const child = section.children?.find(c => c.page === hash);
+        if (child) return { section: section.id, page: hash };
+      }
+    }
+    return { section: "dashboard", page: null };
+  });
   const [expandedSections, setExpandedSections] = useState(new Set());
 
   // Data State
@@ -5155,11 +5181,52 @@ export default function App() {
     if (!isMobile) setMobileMenuOpen(false);
   }, [isMobile]);
 
+  // Hash routing - update hash when currentNav changes
+  useEffect(() => {
+    const page = currentNav.page || currentNav.section;
+    window.location.hash = `#/${page}`;
+  }, [currentNav]);
+
+  // Hash routing - listen for back/forward navigation
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#/', '');
+      if (!hash) return;
+      for (const section of NAV_TREE.sections) {
+        if (section.id === hash && currentNav.section !== hash) {
+          setCurrentNav({ section: hash, page: null });
+          return;
+        }
+        const child = section.children?.find(c => c.page === hash);
+        if (child && currentNav.page !== hash) {
+          setCurrentNav({ section: section.id, page: hash });
+          return;
+        }
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [currentNav]);
+
   // Check auth on mount
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // Timeout wrapper — if getSession hangs (orphaned lock), recover gracefully
+        // Optimistic auth: check localStorage for cached token first
+        const cachedSession = localStorage.getItem('supabase.auth.token');
+        if (cachedSession) {
+          try {
+            const parsed = JSON.parse(cachedSession);
+            if (parsed.user) {
+              setUser(parsed.user);
+              await loadData();
+            }
+          } catch (e) {
+            // Invalid cached session, will verify via getSession
+          }
+        }
+
+        // Verify/refresh token in background (with timeout)
         const sessionPromise = supabase.auth.getSession();
         const timeoutPromise = new Promise((_, reject) =>
           setTimeout(() => reject(new Error("Auth session check timed out")), 8000)
@@ -5169,10 +5236,17 @@ export default function App() {
         } = await Promise.race([sessionPromise, timeoutPromise]);
         if (session?.user) {
           setUser(session.user);
-          await loadData();
+          // Only reload data if not already loaded optimistically
+          if (!cachedSession) {
+            await loadData();
+          }
         }
       } catch (error) {
-        console.error("Auth check failed:", error);
+        // On timeout: don't clear user if cached token exists
+        if (error.message !== "Auth session check timed out" || !localStorage.getItem('supabase.auth.token')) {
+          console.error("Auth check failed:", error);
+          setUser(null);
+        }
       } finally {
         setLoading(false);
       }
