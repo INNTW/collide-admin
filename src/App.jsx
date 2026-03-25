@@ -161,6 +161,8 @@ const TAX_CONFIG_2026 = {
 };
 
 // Navigation tree structure
+// Role hierarchy: admin > team_lead > employee
+// Each nav item specifies which roles can see it
 const NAV_TREE = {
   sections: [
     {
@@ -168,43 +170,43 @@ const NAV_TREE = {
       label: "Dashboard",
       icon: Home,
       page: null,
-      roles: ["admin", "manager"],
+      roles: ["admin", "team_lead", "employee"],
     },
     {
       id: "scheduling",
       label: "Scheduling",
       icon: Calendar,
-      roles: ["admin", "manager"],
+      roles: ["admin", "team_lead", "employee"],
       children: [
-        { id: "events-manager", label: "Events Manager", page: "events-manager" },
-        { id: "calendar", label: "Calendar View", page: "calendar-view" },
-        { id: "shift-builder", label: "Shift Builder", page: "shift-builder" },
-        { id: "role-requirements", label: "Role Requirements", page: "role-requirements" },
-        { id: "availability", label: "Availability", page: "availability" },
-        { id: "my-shifts", label: "My Shifts", page: "my-shifts" },
+        { id: "events-manager", label: "Events Manager", page: "events-manager", roles: ["admin", "team_lead"] },
+        { id: "calendar", label: "Calendar View", page: "calendar-view", roles: ["admin", "team_lead"] },
+        { id: "shift-builder", label: "Shift Builder", page: "shift-builder", roles: ["admin", "team_lead"] },
+        { id: "role-requirements", label: "Role Requirements", page: "role-requirements", roles: ["admin", "team_lead"] },
+        { id: "availability", label: "Availability", page: "availability", roles: ["admin", "team_lead", "employee"] },
+        { id: "my-shifts", label: "My Shifts", page: "my-shifts", roles: ["admin", "team_lead", "employee"] },
       ],
     },
     {
       id: "employees",
       label: "Employees",
       icon: Users,
-      roles: ["admin", "manager"],
+      roles: ["admin", "team_lead"],
       children: [
-        { id: "directory", label: "Directory", page: "directory" },
-        { id: "skills-tags", label: "Skills & Tags", page: "skills-tags" },
-        { id: "payroll", label: "Payroll & T4", page: "payroll" },
+        { id: "directory", label: "Directory", page: "directory", roles: ["admin", "team_lead"] },
+        { id: "skills-tags", label: "Skills & Tags", page: "skills-tags", roles: ["admin", "team_lead"] },
+        { id: "payroll", label: "Payroll & T4", page: "payroll", roles: ["admin"] },
       ],
     },
     {
       id: "inventory",
       label: "Inventory",
       icon: Package,
-      roles: ["admin"],
+      roles: ["admin", "team_lead"],
       children: [
-        { id: "products", label: "Products", page: "products" },
-        { id: "stock", label: "Stock & Distribution", page: "stock" },
-        { id: "inv-analytics", label: "Analytics", page: "inv-analytics" },
-        { id: "inv-projections", label: "Projections", page: "inv-projections" },
+        { id: "products", label: "Products", page: "products", roles: ["admin", "team_lead"] },
+        { id: "stock", label: "Stock & Distribution", page: "stock", roles: ["admin", "team_lead"] },
+        { id: "inv-analytics", label: "Analytics", page: "inv-analytics", roles: ["admin"] },
+        { id: "inv-projections", label: "Projections", page: "inv-projections", roles: ["admin"] },
       ],
     },
     {
@@ -213,9 +215,9 @@ const NAV_TREE = {
       icon: TrendingUp,
       roles: ["admin"],
       children: [
-        { id: "sales-projections", label: "Sales Forecast", page: "sales-projections" },
-        { id: "staffing-projections", label: "Staffing Needs", page: "staffing-projections" },
-        { id: "event-pnl", label: "Event P&L", page: "event-pnl" },
+        { id: "sales-projections", label: "Sales Forecast", page: "sales-projections", roles: ["admin"] },
+        { id: "staffing-projections", label: "Staffing Needs", page: "staffing-projections", roles: ["admin"] },
+        { id: "event-pnl", label: "Event P&L", page: "event-pnl", roles: ["admin"] },
       ],
     },
     {
@@ -223,14 +225,14 @@ const NAV_TREE = {
       label: "Reports",
       icon: BarChart3,
       page: "reports",
-      roles: ["admin", "manager"],
+      roles: ["admin", "team_lead"],
     },
     {
       id: "notifications",
       label: "Notifications",
       icon: Bell,
       page: "notifications",
-      roles: ["admin", "manager"],
+      roles: ["admin", "team_lead", "employee"],
     },
     {
       id: "settings",
@@ -238,8 +240,8 @@ const NAV_TREE = {
       icon: Settings,
       roles: ["admin"],
       children: [
-        { id: "general-settings", label: "General", page: "settings" },
-        { id: "user-management", label: "User Management", page: "user-management" },
+        { id: "general-settings", label: "General", page: "settings", roles: ["admin"] },
+        { id: "user-management", label: "User Management", page: "user-management", roles: ["admin"] },
       ],
     },
   ],
@@ -4958,8 +4960,9 @@ export default function App() {
   const [employeeSkills, setEmployeeSkills] = useState([]);
   const [roleRequirements, setRoleRequirements] = useState([]);
 
-  // Role State
-  const [currentRole, setCurrentRole] = useState("admin");
+  // Role State — default to most restrictive until confirmed
+  const [currentRole, setCurrentRole] = useState(null);
+  const [roleLoaded, setRoleLoaded] = useState(false);
 
   // UI State
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -5065,7 +5068,12 @@ export default function App() {
   const loadUserRole = useCallback(async () => {
     if (!user?.email) return;
     const { data } = await supabase.from("employees").select("app_role").eq("email", user.email).single();
-    if (data?.app_role) setCurrentRole(data.app_role);
+    if (data?.app_role) {
+      setCurrentRole(data.app_role);
+    } else {
+      setCurrentRole("employee"); // safe fallback
+    }
+    setRoleLoaded(true);
   }, [user]);
 
   useEffect(() => { loadUserRole(); }, [loadUserRole]);
@@ -5155,7 +5163,46 @@ export default function App() {
   };
 
   // Render page content
+  // Check if user has access to a page by checking NAV_TREE roles
+  const hasPageAccess = (pageName) => {
+    if (!currentRole) return false;
+    if (!pageName || pageName === "dashboard") return true; // dashboard is accessible to all
+    for (const section of NAV_TREE.sections) {
+      if (section.page === pageName) return !section.roles || section.roles.includes(currentRole);
+      if (section.children) {
+        const child = section.children.find(c => c.page === pageName);
+        if (child) return !child.roles || child.roles.includes(currentRole);
+      }
+    }
+    return false;
+  };
+
+  const AccessDenied = () => (
+    <div style={{ padding: 40, textAlign: "center" }}>
+      <div style={{
+        background: BRAND.glass,
+        backdropFilter: "blur(20px)",
+        border: `1px solid ${BRAND.glassBorder}`,
+        borderRadius: 16,
+        padding: "40px 32px",
+        maxWidth: 420,
+        margin: "0 auto",
+      }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
+        <h2 style={{ color: BRAND.text, marginBottom: 8, fontSize: 20 }}>Access Restricted</h2>
+        <p style={{ color: "rgba(224,230,255,0.6)", fontSize: 14, lineHeight: 1.5 }}>
+          You don't have permission to view this page. Contact your admin if you think this is a mistake.
+        </p>
+      </div>
+    </div>
+  );
+
   const renderPage = () => {
+    // Role guard — block access to pages the user's role can't see
+    if (!hasPageAccess(currentNav.page)) {
+      return <AccessDenied />;
+    }
+
     const pageContent = {
       dashboard: <DashboardPage employees={employees} events={events} locations={locations} shifts={shifts} availability={availability} products={products} stock={stock} historicSales={historicSales} />,
       "events-manager": <EventsManagementPage events={events} locations={locations} onRefresh={loadData} />,
@@ -5212,6 +5259,26 @@ export default function App() {
     return <LoginPage onLoginSuccess={setUser} />;
   }
 
+  // Wait for role to load before rendering main UI
+  if (!roleLoaded) {
+    return (
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: BRAND.gradient }}
+      >
+        <div className="text-center">
+          <div
+            className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-opacity-30 border-current"
+            style={{ borderColor: BRAND.primary }}
+          ></div>
+          <p className="mt-4" style={{ color: BRAND.text }}>
+            Loading your workspace...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // Check mobile
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
@@ -5260,6 +5327,20 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-2">
+          {currentRole && (
+            <span style={{
+              fontSize: 11,
+              padding: "3px 10px",
+              borderRadius: 12,
+              background: currentRole === "admin" ? `${BRAND.primary}30` : currentRole === "team_lead" ? "rgba(251,191,36,0.2)" : "rgba(74,222,128,0.2)",
+              color: currentRole === "admin" ? BRAND.primary : currentRole === "team_lead" ? "#fbbf24" : "#4ade80",
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+            }}>
+              {currentRole === "team_lead" ? "Team Lead" : currentRole}
+            </span>
+          )}
           <Btn
             icon={Bell}
             variant="secondary"
@@ -5299,11 +5380,8 @@ export default function App() {
             }}
           >
             {NAV_TREE.sections.filter(section => {
-              if (currentRole === "admin") return true;
-              if (currentRole === "team_lead") return !section.roles || section.roles.includes("admin") || section.roles.includes("manager");
-              // employee: only dashboard and scheduling (for My Shifts)
-              if (currentRole === "employee") return section.id === "dashboard" || section.id === "scheduling";
-              return true;
+              if (!currentRole) return false; // hide all while role is loading
+              return !section.roles || section.roles.includes(currentRole);
             }).map((section) => {
               const Icon = section.icon;
               const hasChildren = section.children && section.children.length > 0;
@@ -5345,11 +5423,8 @@ export default function App() {
                   {hasChildren && isExpanded && (
                     <div className="ml-4 space-y-1 mt-1">
                       {section.children.filter(child => {
-                        if (currentRole === "admin") return true;
-                        if (currentRole === "team_lead") return true;
-                        // employee: only My Shifts and Availability
-                        if (currentRole === "employee") return child.id === "my-shifts" || child.id === "availability";
-                        return true;
+                        if (!currentRole) return false;
+                        return !child.roles || child.roles.includes(currentRole);
                       }).map((child) => {
                         const isActive = currentNav.page === child.page;
                         return (
