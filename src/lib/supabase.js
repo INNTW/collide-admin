@@ -9,7 +9,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    lock: { acquireTimeout: 5000 },
+    lock: async (_name, _acquireTimeout, fn) => {
+      // Bypass Web Locks API which crashes on some mobile browsers
+      return await fn();
+    },
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
