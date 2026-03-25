@@ -5064,12 +5064,12 @@ export default function App() {
     }
   };
 
-  // Load current user's role from employees table
+  // Load current user's role via SECURITY DEFINER RPC (bypasses RLS)
   const loadUserRole = useCallback(async () => {
     if (!user?.email) return;
-    const { data } = await supabase.from("employees").select("app_role").eq("email", user.email).single();
-    if (data?.app_role) {
-      setCurrentRole(data.app_role);
+    const { data, error } = await supabase.rpc("get_my_role");
+    if (!error && data) {
+      setCurrentRole(data);
     } else {
       setCurrentRole("employee"); // safe fallback
     }
