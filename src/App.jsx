@@ -599,6 +599,11 @@ const Btn = ({
       text: BRAND.text,
       hover: "rgba(255,255,255,0.15)",
     },
+    ghost: {
+      bg: "transparent",
+      text: BRAND.text,
+      hover: "rgba(255,255,255,0.1)",
+    },
     danger: {
       bg: BRAND.danger,
       text: "#fff",
@@ -748,8 +753,8 @@ const LoginPage = ({ onLoginSuccess }) => {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center p-4"
-      style={{ background: BRAND.gradient }}
+      className="flex items-center justify-center p-4"
+      style={{ background: BRAND.gradient, height: "100dvh", minHeight: "-webkit-fill-available" }}
     >
       <div
         className="w-full max-w-md p-8 rounded-2xl"
@@ -2389,7 +2394,9 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
         {isEmployeeOnly ? (
           <div className="px-4 py-3 rounded-lg" style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
             <span style={{ color: BRAND.text }}>
-              {currentEmployee ? `${currentEmployee.first_name} ${currentEmployee.last_name}` : "Loading..."}
+              {currentEmployee
+                ? `${currentEmployee.first_name} ${currentEmployee.last_name}`
+                : user?.email || "You"}
             </span>
           </div>
         ) : (
@@ -2434,10 +2441,11 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
               <div
                 key={key}
                 onClick={() => cycleStatus(key)}
-                className="flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all hover:scale-[1.01]"
+                className="flex items-center justify-between p-4 rounded-lg cursor-pointer transition-all active:scale-[0.98]"
                 style={{
                   background: sc.bg,
                   border: isToday ? `2px solid ${BRAND.primary}` : "2px solid transparent",
+                  minHeight: 56,
                 }}
               >
                 <div>
@@ -5413,8 +5421,8 @@ export default function App() {
   if (loading) {
     return (
       <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ background: BRAND.gradient }}
+        className="flex items-center justify-center"
+        style={{ background: BRAND.gradient, height: "100dvh", minHeight: "-webkit-fill-available" }}}
       >
         <div className="text-center">
           <div
@@ -5438,8 +5446,8 @@ export default function App() {
   if (!roleLoaded) {
     return (
       <div
-        className="min-h-screen flex items-center justify-center"
-        style={{ background: BRAND.gradient }}
+        className="flex items-center justify-center"
+        style={{ background: BRAND.gradient, height: "100dvh", minHeight: "-webkit-fill-available" }}}
       >
         <div className="text-center">
           <div
@@ -5454,58 +5462,57 @@ export default function App() {
     );
   }
 
-  // Check mobile
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  // Reactive mobile detection
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" && window.innerWidth < 768
+  );
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Close mobile menu on navigation or when switching to desktop
+  useEffect(() => {
+    if (!isMobile) setMobileMenuOpen(false);
+  }, [isMobile]);
 
   return (
     <div
-      className="min-h-screen flex flex-col"
-      style={{ background: BRAND.gradient }}
+      className="flex flex-col"
+      style={{
+        background: BRAND.gradient,
+        height: "100dvh",       /* dynamic viewport height — works on mobile */
+        minHeight: "-webkit-fill-available",
+        overflow: "hidden",     /* prevent body scroll — children handle their own */
+      }}
     >
       {/* Header */}
       <div
-        className="border-b px-4 py-3 flex items-center justify-between"
+        className="flex-shrink-0 border-b px-3 py-2 md:px-4 md:py-3 flex items-center justify-between gap-2"
         style={{ borderColor: BRAND.glassBorder }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 flex-shrink-0">
           {isMobile && (
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 hover:bg-white/10 rounded-lg transition"
+              className="p-2.5 -ml-1 hover:bg-white/10 rounded-lg transition"
+              aria-label="Toggle menu"
             >
               {mobileMenuOpen ? (
-                <X size={20} style={{ color: BRAND.text }} />
+                <X size={22} style={{ color: BRAND.text }} />
               ) : (
-                <Menu size={20} style={{ color: BRAND.text }} />
+                <Menu size={22} style={{ color: BRAND.text }} />
               )}
             </button>
           )}
-          <h1 className="text-xl font-bold" style={{ color: BRAND.primary }}>
+          <h1 className={`font-bold ${isMobile ? "text-lg" : "text-xl"}`} style={{ color: BRAND.primary }}>
             Collide
           </h1>
-        </div>
-
-        <div className="flex-1 max-w-md mx-4">
-          <button
-            onClick={() => setCommandPaletteOpen(true)}
-            className="w-full px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition hover:bg-white/10"
-            style={{
-              background: "rgba(255,255,255,0.05)",
-              border: `1px solid ${BRAND.glassBorder}`,
-              color: "rgba(224,230,255,0.7)",
-            }}
-          >
-            <Search size={16} />
-            <span>Search...</span>
-            <span className="ml-auto text-xs">⌘K</span>
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
           {currentRole && (
-            <span style={{
-              fontSize: 11,
-              padding: "3px 10px",
+            <span className="flex-shrink-0" style={{
+              fontSize: 10,
+              padding: "2px 8px",
               borderRadius: 12,
               background: currentRole === "admin" ? `${BRAND.primary}30` : currentRole === "team_lead" ? "rgba(251,191,36,0.2)" : "rgba(74,222,128,0.2)",
               color: currentRole === "admin" ? BRAND.primary : currentRole === "team_lead" ? "#fbbf24" : "#4ade80",
@@ -5516,22 +5523,58 @@ export default function App() {
               {currentRole === "team_lead" ? "Team Lead" : currentRole}
             </span>
           )}
-          <Btn
-            icon={Bell}
-            variant="secondary"
-            size="sm"
+        </div>
+
+        {/* Search — hidden on mobile, shown on desktop */}
+        {!isMobile && (
+          <div className="flex-1 max-w-md mx-4">
+            <button
+              onClick={() => setCommandPaletteOpen(true)}
+              className="w-full px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition hover:bg-white/10"
+              style={{
+                background: "rgba(255,255,255,0.05)",
+                border: `1px solid ${BRAND.glassBorder}`,
+                color: "rgba(224,230,255,0.7)",
+              }}
+            >
+              <Search size={16} />
+              <span>Search...</span>
+              <span className="ml-auto text-xs">⌘K</span>
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {isMobile && (
+            <button
+              onClick={() => setCommandPaletteOpen(true)}
+              className="p-2.5 hover:bg-white/10 rounded-lg transition"
+              aria-label="Search"
+            >
+              <Search size={20} style={{ color: BRAND.text }} />
+            </button>
+          )}
+          <button
             onClick={() => handleNavigate({ section: "notifications", page: "notifications" })}
+            className="p-2.5 hover:bg-white/10 rounded-lg transition"
+            aria-label="Notifications"
           >
-          </Btn>
-          <Btn icon={LogOut} variant="secondary" size="sm" onClick={handleLogout}>
-          </Btn>
+            <Bell size={20} style={{ color: BRAND.text }} />
+          </button>
+          <button
+            onClick={handleLogout}
+            className="p-2.5 hover:bg-white/10 rounded-lg transition"
+            aria-label="Log out"
+          >
+            <LogOut size={20} style={{ color: BRAND.text }} />
+          </button>
         </div>
       </div>
 
-      {/* Breadcrumb */}
-      {currentNav.page && (
+      {/* Breadcrumb — hide on mobile to save space */}
+      {!isMobile && currentNav.page && (
         <div
-          className="px-4 py-2 text-sm border-b"
+          className="flex-shrink-0 px-4 py-2 text-sm border-b"
           style={{
             color: "rgba(224,230,255,0.6)",
             borderColor: BRAND.glassBorder,
@@ -5541,21 +5584,16 @@ export default function App() {
         </div>
       )}
 
-      {/* Main content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar */}
-        {(!isMobile || mobileMenuOpen) && (
+      {/* Main content area */}
+      <div className="flex-1 flex" style={{ minHeight: 0 }}>
+        {/* Desktop sidebar */}
+        {!isMobile && (
           <div
-            className={`${
-              isMobile ? "fixed inset-0 top-16 z-40 w-64" : "w-64"
-            } overflow-y-auto border-r p-4 space-y-1`}
-            style={{
-              borderColor: BRAND.glassBorder,
-              background: isMobile ? BRAND.glass : "transparent",
-            }}
+            className="w-64 flex-shrink-0 overflow-y-auto border-r p-4 space-y-1"
+            style={{ borderColor: BRAND.glassBorder }}
           >
             {NAV_TREE.sections.filter(section => {
-              if (!currentRole) return false; // hide all while role is loading
+              if (!currentRole) return false;
               return !section.roles || section.roles.includes(currentRole);
             }).map((section) => {
               const Icon = section.icon;
@@ -5601,7 +5639,7 @@ export default function App() {
                         if (!currentRole) return false;
                         return !child.roles || child.roles.includes(currentRole);
                       }).map((child) => {
-                        const isActive = currentNav.page === child.page;
+                        const isChildActive = currentNav.page === child.page;
                         return (
                           <button
                             key={child.id}
@@ -5613,14 +5651,14 @@ export default function App() {
                             }
                             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg transition hover:bg-white/10 text-left text-sm"
                             style={{
-                              background: isActive ? `${BRAND.primary}20` : "transparent",
-                              color: isActive ? BRAND.primary : "rgba(224,230,255,0.7)",
+                              background: isChildActive ? `${BRAND.primary}20` : "transparent",
+                              color: isChildActive ? BRAND.primary : "rgba(224,230,255,0.7)",
                             }}
                           >
                             <div
                               className="w-2 h-2 rounded-full"
                               style={{
-                                background: isActive ? BRAND.primary : "rgba(224,230,255,0.3)",
+                                background: isChildActive ? BRAND.primary : "rgba(224,230,255,0.3)",
                               }}
                             ></div>
                             <span>{child.label}</span>
@@ -5635,8 +5673,128 @@ export default function App() {
           </div>
         )}
 
+        {/* Mobile sidebar overlay */}
+        {isMobile && mobileMenuOpen && (
+          <>
+            {/* Backdrop */}
+            <div
+              onClick={() => setMobileMenuOpen(false)}
+              className="fixed inset-0 z-40"
+              style={{ background: "rgba(0,10,30,0.7)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)" }}
+            />
+            {/* Drawer */}
+            <div
+              className="fixed top-0 left-0 bottom-0 z-50 w-72 overflow-y-auto p-4 pt-5 space-y-1"
+              style={{
+                background: "linear-gradient(180deg, #001A35 0%, #00152B 100%)",
+                borderRight: `1px solid ${BRAND.glassBorder}`,
+                boxShadow: "4px 0 24px rgba(0,0,0,0.5)",
+                WebkitOverflowScrolling: "touch",
+              }}
+            >
+              {/* Drawer header */}
+              <div className="flex items-center justify-between mb-4 pb-3" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
+                <h2 className="text-lg font-bold" style={{ color: BRAND.primary }}>Menu</h2>
+                <button
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="p-2 hover:bg-white/10 rounded-lg transition"
+                  aria-label="Close menu"
+                >
+                  <X size={22} style={{ color: BRAND.text }} />
+                </button>
+              </div>
+              {NAV_TREE.sections.filter(section => {
+                if (!currentRole) return false;
+                return !section.roles || section.roles.includes(currentRole);
+              }).map((section) => {
+                const Icon = section.icon;
+                const hasChildren = section.children && section.children.length > 0;
+                const isActive = currentNav.section === section.id;
+                const isExpanded = expandedSections.has(section.id);
+
+                return (
+                  <div key={section.id}>
+                    <button
+                      onClick={() => {
+                        if (hasChildren) {
+                          toggleSection(section.id);
+                        } else {
+                          handleNavigate({
+                            section: section.id,
+                            page: section.page,
+                          });
+                        }
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-3 rounded-lg transition active:bg-white/15 text-left"
+                      style={{
+                        background: isActive ? `${BRAND.primary}20` : "transparent",
+                        color: isActive ? BRAND.primary : BRAND.text,
+                        fontSize: 15,
+                      }}
+                    >
+                      <Icon size={20} />
+                      <span className="flex-1 font-medium">{section.label}</span>
+                      {hasChildren && (
+                        <ChevronDown
+                          size={18}
+                          style={{
+                            transform: isExpanded ? "rotate(0)" : "rotate(-90deg)",
+                            transition: "transform 0.2s",
+                          }}
+                        />
+                      )}
+                    </button>
+
+                    {hasChildren && isExpanded && (
+                      <div className="ml-5 space-y-0.5 mt-1 mb-1">
+                        {section.children.filter(child => {
+                          if (!currentRole) return false;
+                          return !child.roles || child.roles.includes(currentRole);
+                        }).map((child) => {
+                          const isChildActive = currentNav.page === child.page;
+                          return (
+                            <button
+                              key={child.id}
+                              onClick={() =>
+                                handleNavigate({
+                                  section: section.id,
+                                  page: child.page,
+                                })
+                              }
+                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition active:bg-white/15 text-left"
+                              style={{
+                                background: isChildActive ? `${BRAND.primary}20` : "transparent",
+                                color: isChildActive ? BRAND.primary : "rgba(224,230,255,0.7)",
+                                fontSize: 14,
+                              }}
+                            >
+                              <div
+                                className="w-2 h-2 rounded-full flex-shrink-0"
+                                style={{
+                                  background: isChildActive ? BRAND.primary : "rgba(224,230,255,0.3)",
+                                }}
+                              ></div>
+                              <span>{child.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
         {/* Page Content */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div
+          className="flex-1 overflow-y-auto"
+          style={{
+            padding: isMobile ? "16px" : "24px",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
           {renderPage()}
         </div>
       </div>
@@ -5649,15 +5807,6 @@ export default function App() {
         currentPage={currentNav}
         onNavigate={handleNavigate}
       />
-
-      {/* Close mobile menu when clicking outside */}
-      {isMobile && mobileMenuOpen && (
-        <button
-          onClick={() => setMobileMenuOpen(false)}
-          className="fixed inset-0 z-30"
-          aria-hidden="true"
-        ></button>
-      )}
     </div>
   );
 }
