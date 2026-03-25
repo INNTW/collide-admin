@@ -4736,9 +4736,10 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
   const [saving, setSaving] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const [createForm, setCreateForm] = useState({
-    email: "", password: "", first_name: "", last_name: "", app_role: "employee", hourly_rate: "",
+    email: "", first_name: "", last_name: "", app_role: "employee", hourly_rate: "",
   });
   const [resetPassword, setResetPassword] = useState("");
+  const [sendingResetEmail, setSendingResetEmail] = useState(null);
 
   // Read token directly from localStorage to bypass Supabase Web Locks bug
   const getToken = () => {
@@ -4787,20 +4788,31 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
   useEffect(() => { loadUsers(); }, [loadUsers]);
 
   const handleCreateUser = async () => {
-    if (!createForm.email || !createForm.password) return;
+    if (!createForm.email) return;
     setSaving(true);
     try {
-      const json = await callEdgeFn({ action: "create", ...createForm });
+      const json = await callEdgeFn({ action: "invite", ...createForm });
       if (json.error) { setActionMessage(`Error: ${json.error}`); }
       else {
-        setActionMessage("User created successfully");
+        setActionMessage(json.message || "Invitation email sent!");
         setShowCreateModal(false);
-        setCreateForm({ email: "", password: "", first_name: "", last_name: "", app_role: "employee", hourly_rate: "" });
+        setCreateForm({ email: "", first_name: "", last_name: "", app_role: "employee", hourly_rate: "" });
         loadUsers();
         onRefresh?.();
       }
     } catch (err) { setActionMessage(`Error: ${err.message}`); }
     setSaving(false);
+  };
+
+  const handleSendResetEmail = async (userEmail) => {
+    if (!userEmail) return;
+    setSendingResetEmail(userEmail);
+    try {
+      const json = await callEdgeFn({ action: "send-reset-email", email: userEmail });
+      if (json.error) { setActionMessage(`Error: ${json.error}`); }
+      else { setActionMessage(json.message || "Password reset email sent!"); }
+    } catch (err) { setActionMessage(`Error: ${err.message}`); }
+    setSendingResetEmail(null);
   };
 
   const handleUpdateRole = async (employeeId, newRole) => {
@@ -4959,10 +4971,19 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
                     <td className="py-3 px-3 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <button
+                          onClick={() => handleSendResetEmail(u.email)}
+                          className="p-1.5 rounded hover:bg-white/10 transition"
+                          title="Send Password Reset Email"
+                          style={{ color: sendingResetEmail === u.email ? "rgba(224,230,255,0.3)" : BRAND.primary }}
+                          disabled={sendingResetEmail === u.email}
+                        >
+                          {sendingResetEmail === u.email ? <Clock size={14} /> : <FileText size={14} />}
+                        </button>
+                        <button
                           onClick={() => { setSelectedUser(u); setShowResetModal(true); }}
                           className="p-1.5 rounded hover:bg-white/10 transition"
-                          title="Reset Password"
-                          style={{ color: BRAND.primary }}
+                          title="Reset Password Manually"
+                          style={{ color: BRAND.warning }}
                         >
                           <Lock size={14} />
                         </button>
@@ -5014,7 +5035,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
             <Input label="Last Name" value={createForm.last_name} onChange={(e) => setCreateForm({ ...createForm, last_name: e.target.value })} placeholder="Doe" />
           </div>
           <Input label="Email" type="email" value={createForm.email} onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })} placeholder="john@collideapparel.com" />
-          <Input label="Temporary Password" type="text" value={createForm.password} onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })} placeholder="Min 6 characters" />
+          <p className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>They will receive an email to set their own password.</p>
           <Select label="Access Role" value={createForm.app_role} onChange={(e) => setCreateForm({ ...createForm, app_role: e.target.value })} options={[
             { value: "admin", label: "Admin — Full access" },
             { value: "team_lead", label: "Team Lead — Scheduling & inventory" },
@@ -5023,8 +5044,8 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
           <Input label="Hourly Rate ($)" type="number" value={createForm.hourly_rate} onChange={(e) => setCreateForm({ ...createForm, hourly_rate: e.target.value })} placeholder="0.00" />
           <div className="flex justify-end gap-2 mt-4">
             <Btn variant="secondary" onClick={() => setShowCreateModal(false)}>Cancel</Btn>
-            <Btn onClick={handleCreateUser} disabled={saving || !createForm.email || !createForm.password || createForm.password.length < 6}>
-              {saving ? "Creating..." : "Create User"}
+            <Btn onClick={handleCreateUser} disabled={saving || !createForm.email}>
+              {saving ? "Sending Invite..." : "Send Invite Email"}
             </Btn>
           </div>
         </div>
