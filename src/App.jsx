@@ -5064,15 +5064,47 @@ export default function App() {
     }
   };
 
-  // Load current user's role via SECURITY DEFINER RPC (bypasses RLS)
+  // Load current user's role — raw fetch to bypass Supabase Web Locks bug entirely
   const loadUserRole = useCallback(async () => {
     if (!user?.email) return;
-    const { data, error } = await supabase.rpc("get_my_role");
-    if (!error && data) {
-      setCurrentRole(data);
-    } else {
-      setCurrentRole("employee"); // safe fallback
+    try {
+      // Read JWT from localStorage (same pattern as callEdgeFn)
+      let token = null;
+      try {
+        const key = Object.keys(localStorage).find(k => k.startsWith("sb-") && k.endsWith("-auth-token"));
+        if (key) {
+          const stored = JSON.parse(localStorage.getItem(key));
+          token = stored?.access_token || null;
+        }
+      } catch (e) { /* ignore */ }
+
+      if (token) {
+        // Call get_my_role RPC via raw fetch — completely bypasses supabase client
+        const res = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/get_my_role`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+              "Content-Type": "application/json",
+            },
+            body: "{}",
+          }
+        );
+        if (res.ok) {
+          const role = await res.json();
+          if (role && typeof role === "string") {
+            setCurrentRole(role);
+            setRoleLoaded(true);
+            return;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Role load failed:", e);
     }
+    setCurrentRole("employee");
     setRoleLoaded(true);
   }, [user]);
 
