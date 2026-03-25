@@ -5028,7 +5028,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
       </SectionCard>
 
       {/* Create User Modal */}
-      <Modal isOpen={showCreateModal} onClose={() => { setShowCreateModal(false); setCreateForm({ email: "", password: "", first_name: "", last_name: "", app_role: "employee", hourly_rate: "" }); }} title="Create New User" size="md">
+      <Modal isOpen={showCreateModal} onClose={() => { setShowCreateModal(false); setCreateForm({ email: "", first_name: "", last_name: "", app_role: "employee", hourly_rate: "" }); }} title="Create New User" size="md">
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Input label="First Name" value={createForm.first_name} onChange={(e) => setCreateForm({ ...createForm, first_name: e.target.value })} placeholder="John" />
