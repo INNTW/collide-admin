@@ -5422,7 +5422,7 @@ export default function App() {
     return (
       <div
         className="flex items-center justify-center"
-        style={{ background: BRAND.gradient, height: "100dvh", minHeight: "-webkit-fill-available" }}}
+        style={{ background: BRAND.gradient, height: "100dvh", minHeight: "-webkit-fill-available" }}
       >
         <div className="text-center">
           <div
@@ -5447,7 +5447,7 @@ export default function App() {
     return (
       <div
         className="flex items-center justify-center"
-        style={{ background: BRAND.gradient, height: "100dvh", minHeight: "-webkit-fill-available" }}}
+        style={{ background: BRAND.gradient, height: "100dvh", minHeight: "-webkit-fill-available" }}
       >
         <div className="text-center">
           <div
