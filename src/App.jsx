@@ -1574,9 +1574,11 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts 
       const { error } = await supabase.from("shifts").insert({
         event_id: selectedEvent,
         employee_id: newShift.employee_id,
+        shift_date: currentEvent?.start_date || new Date().toISOString().split("T")[0],
         start_time: newShift.start_time,
         end_time: newShift.end_time,
         role: newShift.role || null,
+        status: "scheduled",
       });
       if (error) {
         console.error("Failed to add shift:", error);
@@ -1785,22 +1787,28 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
   ];
 
   const handleAddRole = async () => {
-    if (newRole.role_name && newRole.quantity_needed > 0 && selectedEvent) {
-      const { error } = await supabase.from("role_requirements").insert({
-        event_id: selectedEvent,
-        role_name: newRole.role_name,
-        qty_needed: newRole.quantity_needed,
-        date: new Date().toISOString().split("T")[0],
-      });
-      if (error) {
-        console.error("Failed to add role:", error);
-        alert("Failed to add role: " + (error.message || "Unknown error"));
-        return;
-      }
-      setNewRole({ role_name: "Sales Lead", quantity_needed: 1 });
-      setShowAddRole(false);
-      if (onRefresh) await onRefresh();
+    if (!selectedEvent) {
+      alert("Please select an event first");
+      return;
     }
+    if (!newRole.role_name || newRole.quantity_needed <= 0) {
+      alert("Please provide a role name and quantity");
+      return;
+    }
+    const { error } = await supabase.from("role_requirements").insert({
+      event_id: selectedEvent,
+      role_name: newRole.role_name,
+      qty_needed: newRole.quantity_needed,
+      date: new Date().toISOString().split("T")[0],
+    });
+    if (error) {
+      console.error("Failed to add role:", error);
+      alert("Failed to add role: " + (error.message || "Unknown error"));
+      return;
+    }
+    setNewRole({ role_name: "Sales Lead", quantity_needed: 1 });
+    setShowAddRole(false);
+    if (onRefresh) await onRefresh();
   };
 
   const handleRemoveRole = async (id) => {
