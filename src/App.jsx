@@ -4585,10 +4585,36 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
   });
   const [resetPassword, setResetPassword] = useState("");
 
+  // Read token directly from localStorage to bypass Supabase Web Locks bug
+  const getToken = () => {
+    try {
+      const key = Object.keys(localStorage).find(k => k.startsWith("sb-") && k.endsWith("-auth-token"));
+      if (key) {
+        const stored = JSON.parse(localStorage.getItem(key));
+        return stored?.access_token || null;
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  };
+
   const callEdgeFn = async (body) => {
-    const { data, error } = await supabase.functions.invoke("admin-users", { body });
-    if (error) throw error;
-    return data;
+    const token = getToken();
+    if (!token) throw new Error("Not authenticated — please log in again");
+    const res = await fetch(
+      "https://jediymydtrgxrnazizai.supabase.co/functions/v1/admin-users",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(body),
+      }
+    );
+    const json = await res.json();
+    if (!res.ok && !json.users) throw new Error(json.error || `HTTP ${res.status}`);
+    return json;
   };
 
   const loadUsers = useCallback(async () => {
