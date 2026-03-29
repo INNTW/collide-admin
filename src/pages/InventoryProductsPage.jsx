@@ -8,12 +8,14 @@ import {
   Eye,
   EyeOff,
   Trash2,
+  FileText,
 } from "lucide-react";
 import { Modal, Input, Select, Btn, EmptyState, StatCard } from "../components";
 import { BRAND } from "../constants/brand";
 import { PRODUCT_CATEGORIES } from "../constants/events";
 import { currency } from "../utils/formatters";
 import { supabase } from "../lib/supabase";
+import { exportCSV } from "../utils/csv-export";
 
 const InventoryProductsPage = ({ products = [], stock = {}, onRefresh }) => {
   const [showAddModal, setShowAddModal] = useState(false);
@@ -95,7 +97,37 @@ const InventoryProductsPage = ({ products = [], stock = {}, onRefresh }) => {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Products</h1>
-        <Btn icon={Plus} onClick={() => { resetForm(); setEditProduct(null); setShowAddModal(true); }}>Add Product</Btn>
+        <div className="flex gap-2">
+          <Btn
+            icon={FileText}
+            variant="secondary"
+            size="sm"
+            onClick={() =>
+              exportCSV(
+                filtered.map((p) => ({
+                  name: p.name,
+                  sku: p.sku,
+                  category: p.category || "",
+                  cost: Number(p.cost || 0).toFixed(2),
+                  retail: Number(p.retail || 0).toFixed(2),
+                  stock_qty: stock[p.id] || 0,
+                })),
+                [
+                  { key: "name", label: "Product Name" },
+                  { key: "sku", label: "SKU" },
+                  { key: "category", label: "Category" },
+                  { key: "cost", label: "Cost" },
+                  { key: "retail", label: "Retail" },
+                  { key: "stock_qty", label: "Stock Quantity" },
+                ],
+                "inventory"
+              )
+            }
+          >
+            Export Inventory
+          </Btn>
+          <Btn icon={Plus} onClick={() => { resetForm(); setEditProduct(null); setShowAddModal(true); }}>Add Product</Btn>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

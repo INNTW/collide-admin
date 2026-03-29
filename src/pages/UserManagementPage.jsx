@@ -1,21 +1,51 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { UserPlus, List, X, Users, Check, Lock, Award, Clock, FileText, Unlock } from "lucide-react";
+import { UserPlus, List, X, Users, Check, Lock, Award, Clock, FileText, Unlock, Eye, EyeOff, Edit2 } from "lucide-react";
 import { Btn, StatCard, SectionCard, EmptyState, Modal, Input, Select } from "../components";
 import { BRAND } from "../constants/brand";
+import { supabase } from "../lib/supabase";
+import { SINEncryption } from "../lib/sin-encryption";
+
+const PROVINCES = [
+  { value: "", label: "Select Province" },
+  { value: "AB", label: "Alberta" },
+  { value: "BC", label: "British Columbia" },
+  { value: "MB", label: "Manitoba" },
+  { value: "NB", label: "New Brunswick" },
+  { value: "NL", label: "Newfoundland and Labrador" },
+  { value: "NS", label: "Nova Scotia" },
+  { value: "NT", label: "Northwest Territories" },
+  { value: "NU", label: "Nunavut" },
+  { value: "ON", label: "Ontario" },
+  { value: "PE", label: "Prince Edward Island" },
+  { value: "QC", label: "Quebec" },
+  { value: "SK", label: "Saskatchewan" },
+  { value: "YT", label: "Yukon" },
+];
+
+const SIN_PASSPHRASE = import.meta.env.VITE_SIN_PASSPHRASE || "collide-sin-key";
 
 const UserManagementPage = ({ user, employees = [], onRefresh }) => {
   const [users, setUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [saving, setSaving] = useState(false);
   const [actionMessage, setActionMessage] = useState("");
   const [createForm, setCreateForm] = useState({
-    email: "", first_name: "", last_name: "", app_role: "employee", hourly_rate: "",
+    email: "", first_name: "", last_name: "", app_role: "employee", hourly_rate: "", phone: "",
   });
   const [resetPassword, setResetPassword] = useState("");
   const [sendingResetEmail, setSendingResetEmail] = useState(null);
+
+  // Edit profile state
+  const [editForm, setEditForm] = useState({});
+  const [sinInput, setSinInput] = useState("");
+  const [sinRevealed, setSinRevealed] = useState(false);
+  const [sinDecrypted, setSinDecrypted] = useState("");
+  const [sinLoading, setSinLoading] = useState(false);
+  const [editShiftCount, setEditShiftCount] = useState(null);
 
   // Read token directly from localStorage to bypass Supabase Web Locks bug
   const getToken = () => {
@@ -72,7 +102,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
       else {
         setActionMessage(json.message || "Invitation email sent!");
         setShowCreateModal(false);
-        setCreateForm({ email: "", first_name: "", last_name: "", app_role: "employee", hourly_rate: "" });
+        setCreateForm({ email: "", first_name: "", last_name: "", app_role: "employee", hourly_rate: "", phone: "" });
         loadUsers();
         onRefresh?.();
       }
@@ -123,6 +153,123 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
     setSaving(false);
   };
 
+  // ── Edit Profile handlers ──
+
+  const openEditModal = async (u) => {
+    setSelectedUser(u);
+    setSinInput("");
+    setSinRevealed(false);
+    setSinDecrypted("");
+    setEditShiftCount(null);
+
+    // Find matching employee record
+    const emp = employees.find(e => e.id === u.employee_id) || {};
+
+    setEditForm({
+      first_name: emp.first_name || u.first_name || "",
+      last_name: emp.last_name || u.last_name || "",
+      email: u.email || emp.email || "",
+      phone: emp.phone || "",
+      hourly_rate: emp.hourly_rate ?? "",
+      app_role: emp.app_role || u.app_role || "employee",
+      status: emp.status || "active",
+      street: emp.street || "",
+      city: emp.city || "",
+      province: emp.province || "",
+      postal_code: emp.postal_code || "",
+      emergency_contact_name: emp.emergency_contact_name || "",
+      emergency_contact_phone: emp.emergency_contact_phone || "",
+      emergency_contact_relationship: emp.emergency_contact_relationship || "",
+      td1_federal_claim: emp.td1_federal_claim ?? 16452,
+      td1_provincial_claim: emp.td1_provincial_claim ?? 12989,
+    });
+
+    // Load SIN (encrypted) if present
+    if (emp.sin_encrypted && u.employee_id) {
+      setSinLoading(true);
+      try {
+        const decrypted = await SINEncryption.decrypt(emp.sin_encrypted, SIN_PASSPHRASE, u.employee_id);
+        if (decrypted) {
+          setSinDecrypted(decrypted);
+          setSinInput(decrypted);
+        }
+      } catch (e) {
+        console.error("SIN decrypt error:", e);
+      }
+      setSinLoading(false);
+    }
+
+    // Load shift count
+    if (u.employee_id) {
+      try {
+        const { count } = await supabase
+          .from("shifts")
+          .select("*", { count: "exact", head: true })
+          .eq("employee_id", u.employee_id);
+        setEditShiftCount(count ?? 0);
+      } catch (e) {
+        setEditShiftCount(null);
+      }
+    }
+
+    setShowEditModal(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!selectedUser?.employee_id) return;
+    setSaving(true);
+    try {
+      const updateData = {
+        first_name: editForm.first_name,
+        last_name: editForm.last_name,
+        phone: editForm.phone,
+        hourly_rate: editForm.hourly_rate ? parseFloat(editForm.hourly_rate) : null,
+        app_role: editForm.app_role,
+        status: editForm.status,
+        street: editForm.street,
+        city: editForm.city,
+        province: editForm.province,
+        postal_code: editForm.postal_code,
+        emergency_contact_name: editForm.emergency_contact_name,
+        emergency_contact_phone: editForm.emergency_contact_phone,
+        emergency_contact_relationship: editForm.emergency_contact_relationship,
+        td1_federal_claim: editForm.td1_federal_claim ? parseFloat(editForm.td1_federal_claim) : 16452,
+        td1_provincial_claim: editForm.td1_provincial_claim ? parseFloat(editForm.td1_provincial_claim) : 12989,
+      };
+
+      // Handle SIN encryption
+      const cleanSIN = sinInput.replace(/\D/g, "");
+      if (cleanSIN && cleanSIN.length === 9) {
+        const encrypted = await SINEncryption.encrypt(
+          SINEncryption.format(sinInput),
+          SIN_PASSPHRASE,
+          selectedUser.employee_id
+        );
+        if (encrypted) {
+          updateData.sin_encrypted = encrypted;
+        }
+      } else if (!sinInput.trim()) {
+        updateData.sin_encrypted = null;
+      }
+
+      const { error } = await supabase
+        .from("employees")
+        .update(updateData)
+        .eq("id", selectedUser.employee_id);
+
+      if (error) throw error;
+
+      setActionMessage("Profile saved successfully");
+      setShowEditModal(false);
+      setSelectedUser(null);
+      loadUsers();
+      onRefresh?.();
+    } catch (err) {
+      setActionMessage(`Error: ${err.message}`);
+    }
+    setSaving(false);
+  };
+
   const roleColors = {
     admin: BRAND.danger,
     team_lead: BRAND.warning,
@@ -135,6 +282,8 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
   const adminCount = users.filter(u => u.app_role === "admin").length;
   const activeCount = users.filter(u => !u.banned).length;
   const disabledCount = users.filter(u => u.banned).length;
+
+  const maskedSIN = sinDecrypted ? SINEncryption.mask(sinDecrypted) : "***-***-***";
 
   return (
     <div className="space-y-6">
@@ -246,6 +395,16 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
                     </td>
                     <td className="py-3 px-3 text-center">
                       <div className="flex items-center justify-center gap-1">
+                        {u.employee_id && (
+                          <button
+                            onClick={() => openEditModal(u)}
+                            className="p-1.5 rounded hover:bg-white/10 transition"
+                            title="Edit Profile"
+                            style={{ color: BRAND.text }}
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                        )}
                         <button
                           onClick={() => handleSendResetEmail(u.email)}
                           className="p-1.5 rounded hover:bg-white/10 transition"
@@ -304,7 +463,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
       </SectionCard>
 
       {/* Create User Modal */}
-      <Modal isOpen={showCreateModal} onClose={() => { setShowCreateModal(false); setCreateForm({ email: "", first_name: "", last_name: "", app_role: "employee", hourly_rate: "" }); }} title="Create New User" size="md">
+      <Modal isOpen={showCreateModal} onClose={() => { setShowCreateModal(false); setCreateForm({ email: "", first_name: "", last_name: "", app_role: "employee", hourly_rate: "", phone: "" }); }} title="Create New User" size="md">
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <Input label="First Name" value={createForm.first_name} onChange={(e) => setCreateForm({ ...createForm, first_name: e.target.value })} placeholder="John" />
@@ -312,6 +471,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
           </div>
           <Input label="Email" type="email" value={createForm.email} onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })} placeholder="john@collideapparel.com" />
           <p className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>They will receive an email to set their own password.</p>
+          <Input label="Phone Number" type="tel" value={createForm.phone} onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })} placeholder="(416) 555-0123" />
           <Select label="Access Role" value={createForm.app_role} onChange={(e) => setCreateForm({ ...createForm, app_role: e.target.value })} options={[
             { value: "admin", label: "Admin \u2014 Full access" },
             { value: "team_lead", label: "Team Lead \u2014 Scheduling & inventory" },
@@ -338,6 +498,152 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
             <Btn variant="secondary" onClick={() => { setShowResetModal(false); setSelectedUser(null); setResetPassword(""); }}>Cancel</Btn>
             <Btn onClick={handleResetPassword} disabled={saving || resetPassword.length < 6}>
               {saving ? "Resetting..." : "Reset Password"}
+            </Btn>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Employee Profile Modal */}
+      <Modal isOpen={showEditModal} onClose={() => { setShowEditModal(false); setSelectedUser(null); }} title="Edit Employee Profile" size="lg">
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          {/* Basic Info */}
+          <div className="rounded-lg p-4" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${BRAND.glassBorder}` }}>
+            <h3 className="text-sm font-semibold mb-3" style={{ color: BRAND.primary }}>Basic Information</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="First Name" value={editForm.first_name || ""} onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })} placeholder="First name" />
+              <Input label="Last Name" value={editForm.last_name || ""} onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })} placeholder="Last name" />
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2" style={{ color: BRAND.text }}>Email</label>
+              <div
+                className="w-full px-4 py-2 rounded-lg text-sm"
+                style={{
+                  background: "rgba(255,255,255,0.03)",
+                  border: `1px solid ${BRAND.glassBorder}`,
+                  color: "rgba(224,230,255,0.5)",
+                }}
+              >
+                {editForm.email || "\u2014"}
+              </div>
+            </div>
+            <Input label="Phone Number" type="tel" value={editForm.phone || ""} onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} placeholder="(416) 555-0123" />
+            <Input label="Hourly Rate ($)" type="number" value={editForm.hourly_rate ?? ""} onChange={(e) => setEditForm({ ...editForm, hourly_rate: e.target.value })} placeholder="0.00" />
+            <div className="grid grid-cols-2 gap-3">
+              <Select label="Role" value={editForm.app_role || "employee"} onChange={(e) => setEditForm({ ...editForm, app_role: e.target.value })} options={[
+                { value: "admin", label: "Admin" },
+                { value: "team_lead", label: "Team Lead" },
+                { value: "employee", label: "Employee" },
+              ]} />
+              <Select label="Status" value={editForm.status || "active"} onChange={(e) => setEditForm({ ...editForm, status: e.target.value })} options={[
+                { value: "active", label: "Active" },
+                { value: "on_leave", label: "On Leave" },
+                { value: "terminated", label: "Terminated" },
+              ]} />
+            </div>
+          </div>
+
+          {/* SIN */}
+          <div className="rounded-lg p-4" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${BRAND.glassBorder}` }}>
+            <h3 className="text-sm font-semibold mb-3" style={{ color: BRAND.primary }}>Social Insurance Number (SIN)</h3>
+            {sinLoading ? (
+              <p className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>Decrypting SIN...</p>
+            ) : (
+              <div>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <Input
+                      label="SIN"
+                      type={sinRevealed ? "text" : "password"}
+                      value={sinInput}
+                      onChange={(e) => setSinInput(e.target.value)}
+                      placeholder="123-456-789"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSinRevealed(!sinRevealed)}
+                    className="p-2 mb-4 rounded hover:bg-white/10 transition"
+                    title={sinRevealed ? "Hide SIN" : "Reveal SIN"}
+                    style={{ color: BRAND.primary }}
+                  >
+                    {sinRevealed ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                {sinDecrypted && !sinRevealed && (
+                  <p className="text-xs -mt-2 mb-2" style={{ color: "rgba(224,230,255,0.4)" }}>
+                    Stored: {maskedSIN}
+                  </p>
+                )}
+                {sinInput && !SINEncryption.validate(sinInput) && sinInput.replace(/\D/g, "").length > 0 && (
+                  <p className="text-xs -mt-2" style={{ color: BRAND.warning }}>
+                    SIN must be 9 digits (e.g. 123-456-789)
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Address */}
+          <div className="rounded-lg p-4" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${BRAND.glassBorder}` }}>
+            <h3 className="text-sm font-semibold mb-3" style={{ color: BRAND.primary }}>Address</h3>
+            <Input label="Street" value={editForm.street || ""} onChange={(e) => setEditForm({ ...editForm, street: e.target.value })} placeholder="123 Main St" />
+            <div className="grid grid-cols-3 gap-3">
+              <Input label="City" value={editForm.city || ""} onChange={(e) => setEditForm({ ...editForm, city: e.target.value })} placeholder="Toronto" />
+              <Select label="Province" value={editForm.province || ""} onChange={(e) => setEditForm({ ...editForm, province: e.target.value })} options={PROVINCES} />
+              <Input label="Postal Code" value={editForm.postal_code || ""} onChange={(e) => setEditForm({ ...editForm, postal_code: e.target.value })} placeholder="M5V 2T6" />
+            </div>
+          </div>
+
+          {/* Emergency Contact */}
+          <div className="rounded-lg p-4" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${BRAND.glassBorder}` }}>
+            <h3 className="text-sm font-semibold mb-3" style={{ color: BRAND.primary }}>Emergency Contact</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Contact Name" value={editForm.emergency_contact_name || ""} onChange={(e) => setEditForm({ ...editForm, emergency_contact_name: e.target.value })} placeholder="Jane Doe" />
+              <Input label="Relationship" value={editForm.emergency_contact_relationship || ""} onChange={(e) => setEditForm({ ...editForm, emergency_contact_relationship: e.target.value })} placeholder="Spouse, Parent, etc." />
+            </div>
+            <Input label="Contact Phone" type="tel" value={editForm.emergency_contact_phone || ""} onChange={(e) => setEditForm({ ...editForm, emergency_contact_phone: e.target.value })} placeholder="(416) 555-0456" />
+          </div>
+
+          {/* TD1 Claims */}
+          <div className="rounded-lg p-4" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${BRAND.glassBorder}` }}>
+            <h3 className="text-sm font-semibold mb-3" style={{ color: BRAND.primary }}>CRA Tax Claims (TD1)</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="TD1 Federal Claim ($)" type="number" value={editForm.td1_federal_claim ?? ""} onChange={(e) => setEditForm({ ...editForm, td1_federal_claim: e.target.value })} placeholder="16452" />
+              <Input label="TD1 Provincial Claim ($)" type="number" value={editForm.td1_provincial_claim ?? ""} onChange={(e) => setEditForm({ ...editForm, td1_provincial_claim: e.target.value })} placeholder="12989" />
+            </div>
+            <p className="text-xs mt-1" style={{ color: "rgba(224,230,255,0.4)" }}>
+              Defaults to 2026 Basic Personal Amount if left blank. Federal: $16,452 / Ontario: $12,989.
+            </p>
+          </div>
+
+          {/* Activity Section */}
+          <div className="rounded-lg p-4" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${BRAND.glassBorder}` }}>
+            <h3 className="text-sm font-semibold mb-3" style={{ color: BRAND.primary }}>Activity</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>Last Login</p>
+                <p className="text-sm font-medium" style={{ color: BRAND.text }}>
+                  {selectedUser?.last_sign_in_at
+                    ? new Date(selectedUser.last_sign_in_at).toLocaleDateString("en-CA", {
+                        year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                      })
+                    : "Never"}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>Total Shifts Assigned</p>
+                <p className="text-sm font-medium" style={{ color: BRAND.text }}>
+                  {editShiftCount !== null ? editShiftCount : "\u2014"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Save / Cancel */}
+          <div className="flex justify-end gap-2 pt-2">
+            <Btn variant="secondary" onClick={() => { setShowEditModal(false); setSelectedUser(null); }}>Cancel</Btn>
+            <Btn onClick={handleSaveProfile} disabled={saving}>
+              {saving ? "Saving..." : "Save Profile"}
             </Btn>
           </div>
         </div>

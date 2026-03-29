@@ -20,6 +20,7 @@ import { NAV_TREE } from "./constants/nav";
 
 // Components
 import CommandPalette from "./components/CommandPalette";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 // Pages
 import LoginPage from "./pages/LoginPage";
@@ -292,6 +293,102 @@ export default function App() {
 
   useEffect(() => { loadUserRole(); }, [loadUserRole]);
 
+  // Per-table reload functions for realtime — avoids refetching all 14 tables on every change
+  const reloadTable = async (table) => {
+    try {
+      switch (table) {
+        case "employees": {
+          const { data } = await supabase.from("employees").select("*");
+          if (data) setEmployees(data);
+          break;
+        }
+        case "events": {
+          const { data } = await supabase.from("events").select("*");
+          if (data) setEvents(data);
+          break;
+        }
+        case "event_locations": {
+          const { data } = await supabase.from("event_locations").select("*");
+          if (data) setLocations(data);
+          break;
+        }
+        case "shifts": {
+          const { data } = await supabase.from("shifts").select("*");
+          if (data) setShifts(data);
+          break;
+        }
+        case "notifications": {
+          const { data } = await supabase.from("notifications").select("*");
+          if (data) setNotifications(data);
+          break;
+        }
+        case "skills": {
+          const { data } = await supabase.from("skills").select("*").order("sort_order");
+          if (data) setSkills(data);
+          break;
+        }
+        case "employee_skills": {
+          const { data } = await supabase.from("employee_skills").select("*, skills(*)");
+          if (data) setEmployeeSkills(data);
+          break;
+        }
+        case "role_requirements": {
+          const { data } = await supabase.from("role_requirements").select("*");
+          if (data) setRoleRequirements(data);
+          break;
+        }
+        case "products": {
+          const { data } = await supabase.from("products").select("*");
+          if (data) setProducts(data);
+          break;
+        }
+        case "stock_levels": {
+          const { data } = await supabase.from("stock_levels").select("*");
+          if (data) {
+            const stockObj = {};
+            data.forEach(r => { stockObj[r.product_id] = r.quantity; });
+            setStock(stockObj);
+          }
+          break;
+        }
+        case "distributions": {
+          const { data } = await supabase.from("distributions").select("*");
+          if (data) setDistributions(data);
+          break;
+        }
+        case "employee_availability": {
+          const { data } = await supabase.from("employee_availability").select("*");
+          if (data) {
+            const availObj = {};
+            data.forEach(r => {
+              if (!availObj[r.employee_id]) availObj[r.employee_id] = {};
+              availObj[r.employee_id][r.avail_date] = r.status;
+            });
+            setAvailability(availObj);
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    } catch (error) {
+      console.error(`Realtime reload failed for ${table}:`, error);
+    }
+  };
+
+  // Debounce timers for per-table realtime reloads
+  const debounceTimers = useRef({});
+
+  const debouncedReloadTable = (table) => {
+    if (debounceTimers.current[table]) {
+      clearTimeout(debounceTimers.current[table]);
+    }
+    debounceTimers.current[table] = setTimeout(() => {
+      delete debounceTimers.current[table];
+      reloadTable(table);
+    }, 500);
+  };
+
   // Setup Realtime subscriptions
   const setupRealtimeSubscriptions = () => {
     const tables = ["employees", "events", "event_locations", "shifts", "notifications", "skills", "employee_skills", "role_requirements", "products", "stock_levels", "distributions"];
@@ -307,7 +404,7 @@ export default function App() {
             table,
           },
           () => {
-            loadData();
+            debouncedReloadTable(table);
           }
         )
         .subscribe();
@@ -320,12 +417,13 @@ export default function App() {
     });
   };
 
-  // Cleanup subscriptions
+  // Cleanup subscriptions and debounce timers
   useEffect(() => {
     return () => {
       unsubscribeRef.current.forEach((channel) => {
         supabase.removeChannel(channel);
       });
+      Object.values(debounceTimers.current).forEach(clearTimeout);
     };
   }, []);
 
@@ -415,9 +513,9 @@ export default function App() {
       dashboard: <DashboardPage employees={employees} events={events} locations={locations} shifts={shifts} availability={availability} products={products} stock={stock} historicSales={historicSales} />,
       "events-manager": <EventsManagementPage events={events} locations={locations} onRefresh={loadData} />,
       "calendar-view": <CalendarViewPage events={events} employees={employees} shifts={shifts} locations={locations} availability={availability} employeeSkills={employeeSkills} skills={skills} />,
-      "shift-builder": <ShiftBuilderPage events={events} employees={employees} shifts={shifts} locations={locations} roleRequirements={roleRequirements} onRefresh={loadData} />,
+      "shift-builder": <ShiftBuilderPage events={events} employees={employees} shifts={shifts} locations={locations} roleRequirements={roleRequirements} availability={availability} onRefresh={loadData} />,
       "role-requirements": <RoleRequirementsPage events={events} shifts={shifts} locations={locations} employees={employees} roleRequirements={roleRequirements} onRefresh={loadData} />,
-      directory: <DirectoryPage employees={employees} employeeSkills={employeeSkills} skills={skills} />,
+      directory: <DirectoryPage employees={employees} employeeSkills={employeeSkills} skills={skills} onNavigate={handleNavigate} />,
       "skills-tags": <SkillsTagsPage employees={employees} skills={skills} employeeSkills={employeeSkills} onRefresh={loadData} />,
       availability: <AvailabilityPage employees={employees} events={events} availability={availability} onRefresh={loadData} user={user} currentRole={currentRole} />,
       "my-shifts": <MyShiftsPage employees={employees} events={events} shifts={shifts} user={user} locations={locations} />,
@@ -430,7 +528,7 @@ export default function App() {
       "staffing-projections": <StaffingProjectionsPage events={events} employees={employees} shifts={shifts} roleRequirements={roleRequirements} historicSales={historicSales} />,
       "event-pnl": <EventPnLPage events={events} products={products} historicSales={historicSales} employees={employees} shifts={shifts} stock={stock} roleRequirements={roleRequirements} distributions={distributions} />,
       reports: <ReportsPage employees={employees} events={events} shifts={shifts} historicSales={historicSales} products={products} />,
-      notifications: <NotificationsPage notifications={notifications} />,
+      notifications: <NotificationsPage notifications={notifications} onRefresh={loadData} />,
       settings: <SettingsPage user={user} />,
       "user-management": <UserManagementPage user={user} employees={employees} onRefresh={loadData} />,
     };
@@ -805,7 +903,9 @@ export default function App() {
             WebkitOverflowScrolling: "touch",
           }}
         >
-          {renderPage()}
+          <ErrorBoundary>
+            {renderPage()}
+          </ErrorBoundary>
         </div>
       </div>
 
