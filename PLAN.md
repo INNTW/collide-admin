@@ -1,235 +1,295 @@
 # Collide Staff Manager — Architecture & Roadmap
 
-## System Architecture
+## System Architecture (Current — v5.0)
 
 ```
-┌─────────────────────────────────────────────────┐
-│                   FRONTEND                       │
-│              React (Single JSX)                  │
-│                                                  │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
-│  │  Admin    │  │ Team Lead│  │ Employee │      │
-│  │ Dashboard │  │   View   │  │  Portal  │      │
-│  │ (Full)   │  │ (Partial)│  │ (Own)    │      │
-│  └──────────┘  └──────────┘  └──────────┘      │
-│         │              │            │            │
-│         └──────────────┼────────────┘            │
-│                        │                         │
-│              ┌─────────▼──────────┐              │
-│              │   Auth Gate +      │              │
-│              │   Role Router      │              │
-│              └─────────┬──────────┘              │
-└────────────────────────┼─────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│                   FRONTEND (Vite + React 19)         │
+│                   src/App.jsx (~5900 lines)           │
+│                                                       │
+│  ┌──────────┐  ┌───────────┐  ┌──────────┐          │
+│  │  Admin    │  │ Team Lead │  │ Employee │          │
+│  │ (19 pages)│  │ (subset)  │  │(My Shifts│          │
+│  │  Full     │  │ Schedule  │  │ Avail.   │          │
+│  │  Access   │  │ Inventory │  │ Notifs)  │          │
+│  └──────────┘  └───────────┘  └──────────┘          │
+│         │              │            │                 │
+│         └──────────────┼────────────┘                 │
+│                        │                              │
+│              ┌─────────▼──────────┐                   │
+│              │  NAV_TREE + RBAC   │                   │
+│              │  hasPageAccess()   │                   │
+│              └─────────┬──────────┘                   │
+│                        │ Hash routing (#/page)        │
+└────────────────────────┼──────────────────────────────┘
                          │
-                         ▼
-┌─────────────────────────────────────────────────┐
-│                  SUPABASE                        │
-│                                                  │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
-│  │  Auth    │  │ Database │  │   RLS    │      │
-│  │ (email+ │  │ (Postgres│  │ (Role-   │      │
-│  │ password)│  │  14+ tbl)│  │  gated)  │      │
-│  └──────────┘  └──────────┘  └──────────┘      │
-└─────────────────────────────────────────────────┘
+    ┌────────────────────┼────────────────────┐
+    │              SUPABASE CLOUD              │
+    │                                          │
+    │  ┌────────┐  ┌──────────┐  ┌─────────┐  │
+    │  │  Auth  │  │ Postgres │  │  Edge   │  │
+    │  │  JWT   │  │ 14 tables│  │Functions│  │
+    │  │  RLS   │  │ RLS+views│  │admin-   │  │
+    │  │        │  │ Realtime │  │ users   │  │
+    │  └────────┘  └──────────┘  └─────────┘  │
+    └─────────────────────────────────────────┘
 ```
+
+## Database Schema (14 Tables)
+
+| Table | Key Columns | Purpose |
+|-------|-------------|---------|
+| `employees` | id, first_name, last_name, email, phone, role, hourly_rate, status, auth_user_id, app_role | Staff directory & auth link |
+| `events` | id, name, start_date, end_date, event_type, status, description | Event scheduling |
+| `event_locations` | id, event_id, name, address, city, province | Venue management |
+| `shifts` | id, event_id, employee_id, shift_date, start_time, end_time, role, status | Shift assignments |
+| `employee_availability` | id, employee_id, avail_date, status | Availability tracking |
+| `skills` | id, name, sort_order | Skill taxonomy |
+| `employee_skills` | id, employee_id, skill_id, proficiency | Skill-employee mapping |
+| `role_requirements` | id, event_id, role_name, qty_needed, date | Staffing needs per event |
+| `products` | id, name, sku, category, cost, retail, sizes, weight_kg, status | Inventory catalog |
+| `stock_levels` | id, product_id, quantity | Current stock counts |
+| `distributions` | id, product_id, event_id, quantity, type | Stock movements |
+| `historic_sales` | id, product_id, event_id, quantity_sold, revenue, event_type | Sales history for projections |
+| `shift_templates` | id, name + shift_template_entries (relation) | Reusable schedule templates |
+| `notifications` | id, user_id, type, message, read | System alerts |
 
 ## Role Hierarchy & Permissions
 
 | Feature | Admin | Team Lead | Employee |
 |---------|-------|-----------|----------|
-| View all employees | ✅ | ❌ | ❌ |
-| Edit employees / SIN / tax | ✅ | ❌ | ❌ |
-| Create/edit events | ✅ | ❌ | ❌ |
-| Create/edit locations | ✅ | ❌ | ❌ |
-| Build schedules | ✅ | ❌ | ❌ |
-| View all schedules | ✅ | ✅ (own team) | ❌ |
-| View own schedule | ✅ | ✅ | ✅ |
-| Clock in/out staff | ✅ | ✅ | ❌ |
-| Clock in/out self | ✅ | ✅ | ✅ |
-| View all pay sheets | ✅ | ❌ | ❌ |
-| View own pay stubs | ✅ | ✅ | ✅ |
-| Submit availability | ✅ | ✅ | ✅ |
-| Manage inventory catalog | ✅ | ❌ | ❌ |
-| Create distributions | ✅ | ❌ | ❌ |
-| Enter inventory counts (at event) | ✅ | ✅ | ✅ |
-| View projections / analytics | ✅ | ❌ | ❌ |
-| View reports | ✅ | ❌ | ❌ |
-| Send notifications | ✅ | ❌ | ❌ |
-| View notifications (own) | ✅ | ✅ | ✅ |
+| Dashboard (full stats) | ✅ | ✅ | ❌ |
+| Events Manager | ✅ | ✅ | ❌ |
+| Calendar View | ✅ | ✅ | ❌ |
+| Shift Builder | ✅ | ✅ | ❌ |
+| Role Requirements | ✅ | ✅ | ❌ |
+| Availability | ✅ | ✅ | ✅ (own only) |
+| My Shifts | ✅ | ✅ | ✅ |
+| Directory | ✅ | ✅ | ❌ |
+| Skills & Tags | ✅ | ✅ | ❌ |
+| Payroll & T4 | ✅ | ❌ | ❌ |
+| Inventory (all) | ✅ | ✅ | ❌ |
+| Inv. Analytics | ✅ | ❌ | ❌ |
+| Inv. Projections | ✅ | ❌ | ❌ |
+| Projections (all 3) | ✅ | ❌ | ❌ |
+| Reports | ✅ | ✅ | ❌ |
+| Notifications | ✅ | ✅ | ✅ |
+| User Management | ✅ | ❌ | ❌ |
+| Settings | ✅ | ❌ | ❌ |
 
-## Database Schema — Auth Extension
+## CRA 2026 Tax Engine (Ontario)
 
-### New/Modified Tables for Auth
+### Constants (from `TAX_CONFIG_2026`)
 
-```sql
--- Add to employees table:
-ALTER TABLE employees ADD COLUMN auth_user_id UUID UNIQUE REFERENCES auth.users(id);
-ALTER TABLE employees ADD COLUMN role TEXT DEFAULT 'sales' CHECK (role IN ('admin', 'team_lead', 'sales'));
+| Item | Value |
+|------|-------|
+| CPP rate | 5.95% |
+| CPP YMPE | $74,600 |
+| CPP basic exemption | $3,500 |
+| CPP max contribution | $4,230.45 |
+| CPP2 rate | 4.00% |
+| CPP2 YAMPE | $85,000 |
+| CPP2 max contribution | $416.00 |
+| EI rate | 1.63% |
+| EI max insurable | $68,900 |
+| EI max premium | $1,123.07 |
+| Federal BPA | $16,452 |
+| Ontario BPA | $12,989 |
+| Pay periods | 26 (biweekly) |
 
--- User profiles view (safe for employees to read about themselves)
-CREATE VIEW my_profile AS
-SELECT id, first_name, last_name, email, phone, hourly_rate, status, role
-FROM employees
-WHERE auth_user_id = auth.uid();
+### Functions
+- `CRATax.calcCPP()` — Per-period CPP1 with YTD tracking
+- `CRATax.calcCPP2()` — Per-period CPP2 (earnings above YMPE up to YAMPE)
+- `CRATax.calcEI()` — Per-period EI with annual max
+- `CRATax.calcFederalTax()` — Federal bracket tax with BPA credit
+- `CRATax.calcOntarioTax()` — Ontario bracket tax + surtax
+- `CRATax.calcOHP()` — Ontario Health Premium
+- `CRATax.calcPayPeriod()` — All-in-one per-period calculation
+- `CRATax.generateT4()` — Year-end T4 summary (boxes 14, 16, 16A, 17, 18, 22, 24, 26, 44)
 
--- My shifts view
-CREATE VIEW my_shifts AS
-SELECT s.*, el.name as location_name, el.city, ev.name as event_name
-FROM shifts s
-JOIN event_locations el ON s.event_location_id = el.id
-JOIN events ev ON el.event_id = ev.id
-WHERE s.employee_id = (SELECT id FROM employees WHERE auth_user_id = auth.uid());
+---
 
--- My pay records view
-CREATE VIEW my_pay_records AS
-SELECT pr.*, pp.start_date as period_start, pp.end_date as period_end
-FROM pay_records pr
-JOIN pay_periods pp ON pr.pay_period_id = pp.id
-WHERE pr.employee_id = (SELECT id FROM employees WHERE auth_user_id = auth.uid());
+## FULL AUDIT FINDINGS (2026-03-28)
+
+### Category A: Bugs (12 issues)
+
+| # | Severity | Issue | Location |
+|---|----------|-------|----------|
+| A1 | HIGH | Dashboard "Avg Shift Duration" hardcoded to "6.5h" | App.jsx ~line 976 |
+| A2 | HIGH | Dashboard "Payroll This Month" hardcoded to $0.00 | App.jsx ~line 940 |
+| A3 | HIGH | Reports page uses hardcoded demo arrays for all charts | App.jsx ~lines 2803-2817 |
+| A4 | HIGH | Reports "Avg Wage/Hour" hardcoded to $28.50 | App.jsx ~line 2839 |
+| A5 | HIGH | Directory Edit/View buttons have no onClick handlers | App.jsx ~lines 2095-2100 |
+| A6 | HIGH | Payroll page `employeePayroll = []` — zero real data | App.jsx ~line 2687 |
+| A7 | MED | Notifications shows fake placeholder data when DB empty | App.jsx ~lines 4673-4698 |
+| A8 | MED | Settings checkboxes not wired to state (no onChange) | App.jsx ~lines 5111, 5115 |
+| A9 | MED | Realtime: any table change reloads ALL 14 tables | App.jsx ~line 5389 |
+| A10 | LOW | Shift Builder defaults shift_date to event start_date | App.jsx ~line 1593 |
+| A11 | LOW | Stock updates non-atomic (distribution + stock_levels separate calls) | App.jsx ~line 3160 |
+| A12 | LOW | `upcomingEvents` and `pastEvents` computed but unused in EventsManagementPage | App.jsx ~lines 1119-1120 |
+
+### Category B: Security Issues (4 issues)
+
+| # | Severity | Issue | Location |
+|---|----------|-------|----------|
+| B1 | CRITICAL | Demo credentials shown in login UI ("admin@collide.ca / password") | App.jsx ~line 809 |
+| B2 | HIGH | Hardcoded Supabase URL in `callEdgeFn` instead of env var | App.jsx ~line 4776 |
+| B3 | MED | Password reset field uses `type="text"` — password visible | App.jsx ~line 5076 |
+| B4 | LOW | No input validation on forms before Supabase calls | Multiple pages |
+
+### Category C: Missing Features (8 items)
+
+| # | Priority | Feature | Notes |
+|---|----------|---------|-------|
+| C1 | HIGH | Employee CRUD — no way to add/edit employees from UI | Directory has dead Edit/View buttons |
+| C2 | HIGH | Clock-in/out system | Was in v2/v3 design docs, never implemented in v5 |
+| C3 | HIGH | Payroll wired to real data | Currently empty array, tax engine unused |
+| C4 | MED | Shift date picker in Shift Builder | Always uses event start_date |
+| C5 | MED | CSV export | Was in v2 design, lost in v5 rewrite |
+| C6 | MED | Shift templates UI | Data loaded from Supabase but never rendered in Builder |
+| C7 | LOW | Error boundaries | Crash in any page takes down entire app |
+| C8 | LOW | Audit logging | No record of who changed what |
+
+### Category D: Architecture (4 items)
+
+| # | Priority | Issue | Impact |
+|---|----------|-------|--------|
+| D1 | CRITICAL | 5900-line monolithic App.jsx | Unmaintainable, blocks all future work |
+| D2 | HIGH | No React Router — fragile hash routing | No code splitting, no nested routes, no guards |
+| D3 | HIGH | Massive prop drilling — every page gets 10+ props | Should use Context or state management |
+| D4 | MED | Mixed Tailwind + inline styles | Inconsistent, hard to theme |
+
+---
+
+## TOP 5 MOST CRUCIAL CHANGES (Ranked)
+
+### 1. Split App.jsx into Modules (D1) — CRITICAL
+**Why first:** Every other improvement is blocked by this. You can't test, review, or extend a 5900-line file. Every change risks breaking unrelated pages.
+
+**Plan:**
+```
+src/
+├── App.jsx                  # Shell only: auth, layout, routing
+├── constants/
+│   ├── brand.js             # BRAND design tokens
+│   ├── nav.js               # NAV_TREE
+│   └── tax.js               # TAX_CONFIG_2026
+├── lib/
+│   ├── supabase.js          # Client init (exists)
+│   ├── tax-engine.js        # CRATax utility object
+│   └── sin-encryption.js    # SINEncryption utility
+├── components/
+│   ├── Badge.jsx
+│   ├── Modal.jsx
+│   ├── Input.jsx
+│   ├── Select.jsx
+│   ├── Btn.jsx
+│   ├── EmptyState.jsx
+│   ├── StatCard.jsx
+│   ├── SectionCard.jsx
+│   ├── CommandPalette.jsx
+│   └── LoginPage.jsx
+├── hooks/
+│   ├── useAuth.js           # Auth state, login/logout, role loading
+│   ├── useData.js           # Supabase data fetching + realtime
+│   └── useMobile.js         # Responsive detection
+├── pages/
+│   ├── DashboardPage.jsx
+│   ├── EventsManagementPage.jsx
+│   ├── CalendarViewPage.jsx
+│   ├── ShiftBuilderPage.jsx
+│   ├── RoleRequirementsPage.jsx
+│   ├── AvailabilityPage.jsx
+│   ├── MyShiftsPage.jsx
+│   ├── DirectoryPage.jsx
+│   ├── SkillsTagsPage.jsx
+│   ├── PayrollPage.jsx
+│   ├── InventoryProductsPage.jsx
+│   ├── InventoryStockPage.jsx
+│   ├── InventoryAnalyticsPage.jsx
+│   ├── InventoryProjectionsPage.jsx
+│   ├── SalesProjectionsPage.jsx
+│   ├── StaffingProjectionsPage.jsx
+│   ├── EventPnLPage.jsx
+│   ├── ReportsPage.jsx
+│   ├── NotificationsPage.jsx
+│   ├── UserManagementPage.jsx
+│   └── SettingsPage.jsx
+└── utils/
+    ├── formatters.js        # formatDate, formatTime, currency
+    └── helpers.js
 ```
 
-### RLS Policies by Role
+**Approach:** Extract bottom-up — constants first, then lib, then components, then pages. Each extraction is a standalone commit. Tests after each step.
 
-```sql
--- Employees: admin sees all, others see only themselves
-CREATE POLICY "admin_all_employees" ON employees
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM employees WHERE auth_user_id = auth.uid() AND role = 'admin')
-  );
+### 2. Fix Broken/Placeholder Pages (A1-A8) — HIGH
+**Why second:** The app looks broken to users. Dashboard, Reports, and Payroll show fake/zero data. Directory buttons don't work.
 
-CREATE POLICY "employee_own_record" ON employees
-  FOR SELECT USING (auth_user_id = auth.uid());
+**Fixes:**
+- Dashboard: Calculate avg shift duration from `shifts` data, compute payroll from real records
+- Reports: Replace hardcoded arrays with computed data from employees/events/shifts/sales
+- Payroll: Wire to `pay_records` table (or compute from shifts × hourly_rate if no pay_records)
+- Directory: Implement Edit modal (update employee) and View modal (full profile)
+- Notifications: Remove fake fallback data, show proper empty state
+- Settings: Wire checkboxes to user preferences (or remove if not yet supported)
 
--- Shifts: admin sees all, team_lead sees own event shifts, employee sees own
-CREATE POLICY "admin_all_shifts" ON shifts
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM employees WHERE auth_user_id = auth.uid() AND role = 'admin')
-  );
+### 3. Add React Router (D2) — HIGH
+**Why third:** Enables code splitting (lazy loading pages), proper route guards, nested layouts, and redirect patterns. Replaces 50+ lines of brittle hash-routing code.
 
-CREATE POLICY "employee_own_shifts" ON shifts
-  FOR SELECT USING (
-    employee_id = (SELECT id FROM employees WHERE auth_user_id = auth.uid())
-  );
+**Plan:**
+- Install `react-router-dom`
+- Define routes with role-based guards (wrap in `<ProtectedRoute role={["admin", "team_lead"]}>`)
+- Use `<Outlet>` for shared layout (sidebar + header)
+- Lazy-load heavy pages (projections, analytics) with `React.lazy()`
 
--- Pay records: admin sees all, employee sees own only
-CREATE POLICY "admin_all_pay" ON pay_records
-  FOR ALL USING (
-    EXISTS (SELECT 1 FROM employees WHERE auth_user_id = auth.uid() AND role = 'admin')
-  );
+### 4. Fix Security Issues (B1-B4) — HIGH
+**Why fourth:** Small changes, high impact.
 
-CREATE POLICY "employee_own_pay" ON pay_records
-  FOR SELECT USING (
-    employee_id = (SELECT id FROM employees WHERE auth_user_id = auth.uid())
-  );
-```
+**Fixes:**
+- B1: Remove `Demo: admin@collide.ca / password` from LoginPage
+- B2: Replace hardcoded URL in `callEdgeFn` with `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/admin-users`
+- B3: Change password reset input from `type="text"` to `type="password"`
+- B4: Add basic validation (required fields, email format, number ranges) before Supabase calls
 
-## CRA Tax Engine Design (2026 Tax Year — Ontario)
+### 5. Implement Missing Core Features (C1-C3) — HIGH
+**Why fifth:** These are the most user-visible gaps.
 
-### Source: CRA T4127 Payroll Deductions Formulas
+**Plan:**
+- C1 (Employee CRUD): Add/Edit employee modal on Directory page with full form (name, email, phone, role, hourly_rate, status)
+- C2 (Clock-in/out): Add clock-in/out buttons on My Shifts page; record actual_start/actual_end in shifts table
+- C3 (Payroll data): Calculate pay from shifts (hours × hourly_rate), apply CRATax.calcPayPeriod(), store in pay_records table
 
-All constants below are for 2026 tax year. Stored in a `TAX_CONFIG_2026` object for easy annual updates.
-
-### CPP (Canada Pension Plan)
-
-```
-CPP1:
-  Rate: 5.95%
-  Annual max pensionable earnings (YMPE): $71,300
-  Annual basic exemption: $3,500
-  Annual max contribution: $4,034.10
-
-CPP2 (Second ceiling — since 2024):
-  Rate: 4.00%
-  YMPE2 (second ceiling): $79,400
-  Annual max CPP2 contribution: $324.00
-
-Per-pay calculation:
-  CPP1 per pay = min(
-    (pensionable_earnings - (3500 / pay_periods)) * 0.0595,
-    (4034.10 - ytd_cpp1) // don't exceed annual max
-  )
-  CPP2 per pay = (applied only on earnings between YMPE and YMPE2)
-```
-
-### EI (Employment Insurance)
-
-```
-  Rate: 1.63% (employee)
-  Annual max insurable earnings: $65,700
-  Annual max contribution: $1,071.00
-
-Per-pay calculation:
-  EI per pay = min(
-    insurable_earnings * 0.0163,
-    (1071.00 - ytd_ei)
-  )
-```
-
-### Federal Tax Brackets (2026)
-
-```
-  $0 – $57,375:           15.0%
-  $57,375 – $114,750:     20.5%
-  $114,750 – $158,468:    26.0%
-  $158,468 – $220,000:    29.0%
-  $220,000+:              33.0%
-
-  Basic personal amount: $16,129
-  Federal tax = bracket_tax(annualized_income) - (BPA * 0.15)
-  Per-pay federal tax = annual_tax / pay_periods
-```
-
-### Ontario Provincial Tax Brackets (2026)
-
-```
-  $0 – $52,886:           5.05%
-  $52,886 – $105,775:     9.15%
-  $105,775 – $150,000:    11.16%
-  $150,000 – $220,000:    12.16%
-  $220,000+:              13.16%
-
-  Ontario personal amount: $11,865
-  Ontario surtax:
-    20% on basic provincial tax > $5,315
-    + 36% on basic provincial tax > $6,802
-
-  Per-pay Ontario tax = (annual_tax + surtax) / pay_periods
-```
-
-### T4 Box Mapping
-
-| Box | Description | Source |
-|-----|-------------|--------|
-| 14 | Employment income | Sum of all gross pay in tax year |
-| 16 | Employee's CPP contributions | Sum of CPP1 deductions |
-| 17 | Employee's QPP contributions | 0 (Ontario employees) |
-| 18 | Employee's EI premiums | Sum of EI deductions |
-| 22 | Income tax deducted | Sum of federal + provincial tax |
-| 24 | EI insurable earnings | Sum of insurable earnings (max $65,700) |
-| 26 | CPP pensionable earnings | Sum of pensionable earnings (max $71,300) |
-| 44 | Union dues | 0 (unless applicable) |
-| 16A | CPP2 contributions | Sum of CPP2 deductions |
+---
 
 ## Roadmap
 
-### v3.0 — Auth, Roles & Tax (Current)
-- Supabase Auth integration
-- Three-tier role system with RLS
-- Admin vs Employee portal
-- CRA-accurate tax engine
-- T4 generation
+### v5.1 — Audit Fix Sprint (NEXT)
+- Split App.jsx into modules
+- Fix all bugs (A1-A12)
+- Fix all security issues (B1-B4)
+- Add React Router
+- Implement employee CRUD
 
-### v4.0 — Production Hardening (Future)
-- Wire Supabase live (replace demo data)
-- Client-side SIN encryption (AES-256-GCM)
+### v5.2 — Feature Completion
+- Clock-in/out system
+- Wire payroll to real data
+- CSV export
+- Shift templates UI
+- Shift date picker
+- Error boundaries
+
+### v6.0 — Production Hardening
 - Deploy to Vercel
-- Mobile-responsive employee portal
-- Real-time notifications (Supabase Realtime)
+- Add Supabase schema to repo (migration files)
+- Proper state management (Context API or Zustand)
+- Loading skeletons instead of spinners
+- Comprehensive input validation
+- Audit logging
 
-### v5.0 — Advanced Features (Future)
+### v7.0 — Advanced Features
 - Drag-and-drop schedule builder
-- Photo-based inventory counting
-- Multi-province tax support (not just Ontario)
-- Payroll direct deposit integration
-- Event P&L reports (revenue - COGS - labour)
-- Employee document storage (void cheques, IDs, contracts)
+- Multi-province tax support
+- Employee document storage
+- Email notifications via Supabase
+- Batch import (CSV → employees/products)
+- PWA for offline event use

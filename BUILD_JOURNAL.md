@@ -18,12 +18,6 @@ Built the foundational Collide Staff Manager React app from scratch. Tharindra d
 - `index.jsx` — 5 pages: Dashboard, Employees, Events, Schedule, Pay Sheets
 - `supabase-schema.sql` — 6 core tables with RLS, views, and triggers
 
-**Key feature notes:**
-- Dashboard detects overlapping weekends automatically (groups events by week)
-- Employee SIN is masked by default, click to reveal
-- Schedule shows per-day, per-location grid with shift details
-- Pay sheets use simplified flat-rate Canadian deductions (noted as approximate)
-
 ---
 
 ## 2026-03-24 01:30 | Session 1 | v2.0 feature expansion
@@ -31,116 +25,135 @@ Built the foundational Collide Staff Manager React app from scratch. Tharindra d
 Tharindra asked for all suggested improvements plus a full inventory projection/distribution model with historic data visualization. Rebuilt the entire app to incorporate 8 new systems.
 
 **New features added:**
-- Availability tracking (employee → date → available/tentative/unavailable)
-- Availability matrix integrated into Schedule page
-- Shift templates (3 presets with one-click apply)
-- Clock-in/out with actual_start/actual_end recording
-- CSV export buttons on Employees, Schedule, Pay Sheets
-- Event cost estimator (auto-calculates labour from scheduled shifts)
-- Notifications system (compose + send to event staff)
-- Inventory system with 4 sub-tabs:
-  - Products (catalog with SKU, margins, stock levels)
-  - Stock & Distribution (send to events, track lifecycle)
-  - Projections (historic sell-through → recommended quantities)
-  - Analytics (recharts: revenue by product, sell-through by event, monthly trends)
-- Reports page (YoY revenue, staff utilization, category performance, labour vs revenue)
+- Availability tracking, shift templates, clock-in/out, CSV export
+- Event cost estimator, notifications system
+- Inventory system with 4 sub-tabs (Products, Stock, Projections, Analytics)
+- Reports page with YoY revenue charts
 
-**Schema expanded to 14 tables:** Added products, stock_levels, distributions, historic_sales, employee_availability, shift_templates, shift_template_entries, notifications
-
-**Historic demo data added:** 4 past events (CNE, Osheaga, Bluesfest, Celebration of Light) with realistic sales data to power the projection engine.
+**Schema expanded to 14 tables.**
 
 ---
 
-## 2026-03-24 01:48 | Session 1 | v3.0 scoping — Auth, Roles & Tax
+## 2026-03-24 01:48 | Session 1 | v3.0 — Auth, Roles & CRA Tax Engine
 
-Tharindra asked three critical questions:
-1. **Employee logins** — Each employee needs their own login to see shifts, pay, submit availability, enter inventory
-2. **Admin hierarchy** — Only Tharindra and partner should see admin tools. Employees should never see other people's data.
-3. **Canadian tax accuracy** — Pay sheets must be CRA-accurate for T4 purposes. Wants seamless year-end tax filing.
+**Correction from Tharindra:** Flat-rate tax calculation (15% federal, 5.05% provincial) is NOT acceptable. Must implement bracket-based progressive tax per CRA T4127.
 
-**Decisions made (confirmed by Tharindra):**
-- Three-tier roles: Admin, Team Lead, Employee
-- Supabase Auth for login (email + password)
-- CRA T4127 formula implementation (not flat rates)
-- T4 summary generation for year-end
-- Accountant validation recommended before live CRA filing
-
-**Correction from Tharindra:** The simplified flat-rate tax calculation (15% federal, 5.05% provincial) is NOT acceptable for production. Must implement actual bracket-based progressive tax calculation per CRA T4127.
+**Built:**
+- CRA 2026 tax engine with full bracket tables
+- Three-tier role system (Admin, Team Lead, Employee)
+- Supabase Auth integration
+- Employee portal with 5 tabs
+- RLS overhaul with 3 helper functions and 20+ policies
 
 ---
 
-## 2026-03-24 01:48 | Session 1 | Context protection initialized
+## 2026-03-24 01:59 | Session 1 | Context protection initialized
 
-Created all 4 context files per Optimus Context Guard protocol:
-- `CLAUDE.md` — Session boot instructions, architecture decisions, gotchas, common mistakes
-- `BUILD_STATE.md` — Live progress snapshot with checkboxes
-- `BUILD_JOURNAL.md` — This file
-- `PLAN.md` — Architecture, schemas, roadmap, tax engine design
+Created CLAUDE.md, BUILD_STATE.md, BUILD_JOURNAL.md, PLAN.md per Optimus Context Guard protocol.
 
 ---
 
-## 2026-03-24 01:55 | Session 1 | v3.0 — Auth, Roles & CRA Tax Engine built
+## Sessions 2-N (between 2026-03-24 and 2026-03-28) | v4.0 → v5.0 evolution
 
-Built all v3.0 features in `index.jsx`:
+*Note: These sessions were not journaled. Reconstructed from git log analysis.*
 
-**CRA Tax Engine (`TAX_CONFIG_2026` + `CRATax` object):**
-- Full 2026 Ontario tax constants from canada.ca (T4127, T4032-ON)
-- CPP1 (5.95%, YMPE $74,600, max $4,230.45), CPP2 (4%, YAMPE $85,000, max $416)
-- EI (1.63%, max insurable $68,900, max premium $1,123.07)
-- Federal brackets (14%, 20.5%, 26%, 29%, 33%) with K constants
-- Ontario brackets (5.05%, 9.15%, 11.16%, 12.16%, 13.16%) with KP constants
-- Ontario surtax (20% over $5,818 + 36% over $7,446)
-- Functions: `calcCPP`, `calcCPP2`, `calcEI`, `calcFederalTax`, `calcOntarioTax`, `calcPayPeriod`, `generateT4`
-- YTD accumulator tracking across pay periods
+**Major changes made (from git history):**
+- Migrated from single `index.jsx` to Vite project structure (`src/App.jsx`, `src/lib/supabase.js`, `src/main.jsx`)
+- Replaced demo data with live Supabase queries (14 parallel fetches in `loadData()`)
+- Added Supabase Realtime subscriptions for 11 tables
+- Implemented Web Locks API bypass (supabase.js `auth.lock` override)
+- Raw fetch workaround for role loading (`/rpc/get_my_role`)
+- Added hash-based routing with browser back/forward support
+- Built 12+ new pages: Events Manager, Calendar View, Shift Builder, Role Requirements, Inventory Projections, Sales Forecast, Staffing Needs, Event P&L, User Management
+- Added Edge Function integration for user management (invite, role update, password reset)
+- Mobile responsive overhaul (drawer sidebar, touch targets, viewport detection)
+- SIN encryption implementation (AES-256-GCM via Web Crypto)
+- Command palette (Cmd+K)
+- Multiple bug fixes: React hooks ordering, shift creation fields, white screen fixes
 
-**Auth System:**
-- `DEMO_USERS` array with 4 demo accounts (admin, team_lead, 2x sales)
-- `LoginPage` component with email/password form + quick-login buttons
-- Auth state management in main `App` component (currentUser, login/logout)
-- Role-gated navigation: `ADMIN_NAV` (8 pages) vs `EMPLOYEE_NAV` (restricted)
-
-**Employee Portal (`EmployeePortal` component):**
-- 5 tabs: My Shifts, My Pay, Availability, Inventory Entry, Team (Team Lead only)
-- Self clock-in/out on My Shifts tab
-- Team Lead can clock in/out team members on Team tab
-
-**Pay Sheets updated:**
-- Replaced flat-rate deductions with `CRATax.calcPayPeriod()` calls
-- T4 summary toggle (admin only) with `CRATax.generateT4()` per employee
-- T4 cards show boxes 14, 16, 16A, 18, 22, 24, 26
-
-**Files changed:** `index.jsx`
+**Key commits:**
+- `75468d4` — URL routing, calendar fix, dashboard fix, shared venues, auth persistence
+- `eb69047` — Fix white screen: bypass Web Locks API
+- `e1a8439` — Fix shift creation: add missing shift_date and status fields
+- `8192e60` — Mobile overhaul: fix scrolling, sidebar drawer, touch targets
+- `3c4eb92` — Add role-based access control: nav filtering, page guards, role badge
+- `36dbc5a` — Add User Management admin panel with role-based access control
 
 ---
 
-## 2026-03-24 01:59 | Session 1 | v3.0 — Supabase schema updated for auth + RLS
+## 2026-03-28 18:27 | Session (new) | Full v5.0 Audit
 
-Updated `supabase-schema.sql` from v2.0 to v3.0:
+Performed comprehensive code audit of the entire `src/App.jsx` (~5900 lines). Read every line across all 19+ pages, all shared components, the tax engine, auth system, routing, and data layer.
 
-**Employees table changes:**
-- Added `auth_user_id UUID UNIQUE REFERENCES auth.users(id)` — links Supabase Auth to employee record
-- Changed `role` CHECK to `('admin', 'team_lead', 'sales')` — removed 'manager', standardized
-- Updated TD1 defaults to 2026 values ($16,452 federal BPA, $12,989 Ontario BPA)
+**Audit found 22 issues across 4 categories:**
 
-**Pay records table changes:**
-- Added `cpp2_deduction` column for CPP2 second ceiling
-- Added YTD tracking columns: `ytd_gross`, `ytd_cpp`, `ytd_cpp2`, `ytd_ei`, `ytd_federal_tax`, `ytd_provincial_tax`
+### Bugs Found (12):
+- Dashboard has 2 hardcoded values ("6.5h" avg shift, $0 payroll)
+- Reports page uses entirely hardcoded demo arrays for all charts
+- Directory Edit/View buttons have no onClick — dead buttons
+- Payroll page has no real data (`employeePayroll = []`, tax engine is never called)
+- Notifications falls back to fake data
+- Settings checkboxes non-functional
+- Realtime thundering herd (any change reloads all 14 tables)
+- Shift Builder doesn't let you pick a date (defaults to event start)
+- Stock updates are non-atomic
 
-**RLS overhaul — replaced generic `auth_full_access` with role-based policies:**
-- 3 helper functions: `is_admin()`, `is_team_lead_or_admin()`, `my_employee_id()`
-- Employees: admin full CRUD, non-admin read own record only
-- Events/Locations: admin full CRUD, all authenticated can read
-- Shifts: admin full CRUD, team lead read+update, employee read own
-- Availability: admin full CRUD, all manage own
-- Pay: admin full CRUD, employee read own only
-- Inventory: admin full CRUD, all read products, team lead can update distributions
-- Templates: admin only
-- Notifications: admin full CRUD, all read
+### Security Issues Found (4):
+- **CRITICAL:** Demo credentials exposed in login UI text
+- Hardcoded Supabase URL in Edge Function call (should use env var)
+- Password reset field shows plaintext (type="text")
+- No client-side input validation before DB calls
 
-**Secure employee views added:**
-- `my_profile` — safe subset (no SIN, no banking)
-- `my_shifts` — own shifts with event/location details
-- `my_pay_records` — own pay stubs with YTD and period dates
-- `my_availability` — own availability entries
+### Missing Features (8):
+- No employee CRUD (the most basic admin function!)
+- No clock-in/out (was designed in v2/v3 but lost in rewrite)
+- Payroll not wired to any real data source
+- No CSV export, no shift templates UI, no error boundaries
 
-**Files changed:** `supabase-schema.sql`
+### Architecture Issues (4):
+- **CRITICAL:** 5900-line monolithic file blocks all future work
+- No React Router — fragile custom hash routing
+- Massive prop drilling (no Context/state management)
+- Mixed Tailwind + inline styles
+
+**Top 5 prioritized changes documented in PLAN.md:**
+1. Split App.jsx into modules
+2. Fix broken/placeholder pages
+3. Add React Router
+4. Fix security issues
+5. Implement missing core features (employee CRUD, clock-in/out, payroll)
+
+**All 4 context files updated:**
+- `CLAUDE.md` — Rewritten for v5.0 reality (was describing v3.0 with demo data)
+- `BUILD_STATE.md` — Updated with complete audit findings, broken/missing lists
+- `BUILD_JOURNAL.md` — Reconstructed missing session history, added audit entry
+- `PLAN.md` — Complete rewrite with audit findings, file split plan, ranked top 5, roadmap
+
+**Files changed:** `CLAUDE.md`, `BUILD_STATE.md`, `BUILD_JOURNAL.md`, `PLAN.md`
+
+---
+
+## 2026-03-29 01:00 | Session 7 | v5.0 → v5.1 — Modular architecture + security fixes
+
+**Priority 1 COMPLETE: Split monolithic App.jsx into modular architecture.**
+
+The 5,824-line `src/App.jsx` was broken down into 43 separate files across 6 directories:
+- `src/constants/` (5 files): brand.js, tax.js, nav.js, events.js, index.js
+- `src/lib/` (2 files): tax-engine.js, sin-encryption.js (supabase.js already existed)
+- `src/utils/` (1 file): formatters.js
+- `src/components/` (10 files): Badge, Btn, CommandPalette, EmptyState, Input, Modal, SectionCard, Select, StatCard, index.js
+- `src/pages/` (22 files): All 22 page components extracted with proper imports/exports
+
+App.jsx rebuilt as 822-line thin shell (auth, data loading, routing, layout). **86% line reduction.**
+
+**Priority 4 COMPLETE: Security fixes applied.**
+- B1: Removed demo credentials (`admin@collide.ca / password`) from LoginPage
+- B2: Replaced hardcoded Supabase URL with `import.meta.env.VITE_SUPABASE_URL` in UserManagementPage
+- B3: Changed password reset field from `type="text"` to `type="password"` in UserManagementPage
+
+**Verification:** `npm run build` passes, dev server runs, no import/export errors.
+
+**Decision:** Kept hash-based routing for now (React Router is separate priority). The modular split was done bottom-up: constants → lib → utils → components → pages → shell rebuild. Each page was extracted as an independent module with its own imports.
+
+**Files created:** 43 new files (see BUILD_STATE.md for full tree)
+**Files modified:** `src/App.jsx` (rewritten as thin shell), `CLAUDE.md`, `BUILD_STATE.md`, `BUILD_JOURNAL.md`
