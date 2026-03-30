@@ -555,24 +555,19 @@ const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 let placesLibPromise = null;
 const loadGooglePlaces = () => {
   if (placesLibPromise) return placesLibPromise;
-  // If already loaded from a previous call, resolve immediately
-  if (window.google?.maps?.places?.AutocompleteService) {
-    placesLibPromise = Promise.resolve(window.google.maps.places);
-    return placesLibPromise;
-  }
   placesLibPromise = new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    // Load with libraries=places — the places library is bundled with the main script
-    // No async loading, no importLibrary — just a simple onload callback
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
-    script.async = true;
-    script.onload = () => {
-      if (window.google?.maps?.places?.AutocompleteService) {
-        resolve(window.google.maps.places);
-      } else {
-        reject(new Error("Google Places library failed to load"));
+    // Use callback-based loader to enable importLibrary for the new Places API
+    window.__googleMapsCallback = async () => {
+      try {
+        const placesLib = await window.google.maps.importLibrary("places");
+        resolve(placesLib);
+      } catch (e) {
+        reject(e);
       }
     };
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=__googleMapsCallback`;
+    script.async = true;
     script.onerror = reject;
     document.head.appendChild(script);
   });
@@ -581,7 +576,7 @@ const loadGooglePlaces = () => {
 
 const VenueAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Search venue name..." }) => {
   const containerRef = useRef(null);
-  const autocompleteRef = useRef(null);
+  const placesLibRef = useRef(null);
   const sessionTokenRef = useRef(null);
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -591,84 +586,69 @@ const VenueAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Sear
   useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY) return;
     let isMounted = true;
-    loadGooglePlaces().then((placesLib) => {
+    loadGooglePlaces().then((lib) => {
       if (!isMounted) return;
-      autocompleteRef.current = new placesLib.AutocompleteService();
-      sessionTokenRef.current = new placesLib.AutocompleteSessionToken();
-    });
+      placesLibRef.current = lib;
+      sessionTokenRef.current = new lib.AutocompleteSessionToken();
+    }).catch(err => console.error("Failed to load Google Places:", err));
     return () => { isMounted = false; };
   }, []);
 
   const fetchSuggestions = (input) => {
-    if (!input || input.length < 2 || !autocompleteRef.current) {
+    if (!input || input.length < 2 || !placesLibRef.current) {
       setSuggestions([]);
       setShowSuggestions(false);
       return;
     }
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
+    debounceRef.current = setTimeout(async () => {
       setLoading(true);
-      // Safety timeout — clear "Searching..." if callback never fires (e.g. API not activated)
-      const safetyTimeout = setTimeout(() => { setLoading(false); }, 5000);
       try {
-        autocompleteRef.current.getPlacePredictions(
-          {
-            input,
-            types: ["establishment"],
-            componentRestrictions: { country: "ca" },
-            sessionToken: sessionTokenRef.current,
-          },
-          (predictions, status) => {
-            clearTimeout(safetyTimeout);
-            setLoading(false);
-            if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
-              setSuggestions(predictions);
-              setShowSuggestions(true);
-            } else {
-              console.warn("Places API returned status:", status);
-              setSuggestions([]);
-              setShowSuggestions(false);
-            }
-          }
-        );
+        const { suggestions: results } = await placesLibRef.current.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input,
+          includedPrimaryTypes: ["establishment"],
+          includedRegionCodes: ["ca"],
+          sessionToken: sessionTokenRef.current,
+        });
+        setSuggestions(results || []);
+        setShowSuggestions((results || []).length > 0);
       } catch (err) {
-        clearTimeout(safetyTimeout);
+        console.warn("Places autocomplete error:", err);
+        setSuggestions([]);
+        setShowSuggestions(false);
+      } finally {
         setLoading(false);
-        console.error("Places API error:", err);
       }
     }, 300);
   };
 
-  const handleSelect = (prediction) => {
+  const handleSelect = async (suggestion) => {
     setShowSuggestions(false);
     setSuggestions([]);
-    const placesService = new window.google.maps.places.PlacesService(document.createElement("div"));
-    placesService.getDetails(
-      {
-        placeId: prediction.place_id,
-        fields: ["address_components", "formatted_address", "name"],
-        sessionToken: sessionTokenRef.current,
-      },
-      (place, status) => {
-        sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
-        if (status !== window.google.maps.places.PlacesServiceStatus.OK || !place) return;
-        const get = (type) => {
-          const comp = (place.address_components || []).find(c => c.types.includes(type));
-          return comp ? comp.long_name : "";
-        };
-        const getShort = (type) => {
-          const comp = (place.address_components || []).find(c => c.types.includes(type));
-          return comp ? comp.short_name : "";
-        };
-        const streetNumber = get("street_number");
-        const route = get("route");
-        const address = streetNumber ? `${streetNumber} ${route}` : route;
-        const city = get("locality") || get("sublocality_level_1") || get("administrative_area_level_3");
-        const province = getShort("administrative_area_level_1");
-        const venueName = place.name || "";
-        onPlaceSelect({ name: venueName, address, city, province, formatted: place.formatted_address || address });
-      }
-    );
+    try {
+      const placePrediction = suggestion.placePrediction;
+      const place = new placesLibRef.current.Place({ id: placePrediction.placeId });
+      await place.fetchFields({ fields: ["displayName", "formattedAddress", "addressComponents"] });
+      // Reset session token after place details fetch (ends billing session)
+      sessionTokenRef.current = new placesLibRef.current.AutocompleteSessionToken();
+      const get = (type) => {
+        const comp = (place.addressComponents || []).find(c => c.types.includes(type));
+        return comp ? comp.longText : "";
+      };
+      const getShort = (type) => {
+        const comp = (place.addressComponents || []).find(c => c.types.includes(type));
+        return comp ? comp.shortText : "";
+      };
+      const streetNumber = get("street_number");
+      const route = get("route");
+      const address = streetNumber ? `${streetNumber} ${route}` : route;
+      const city = get("locality") || get("sublocality_level_1") || get("administrative_area_level_3");
+      const province = getShort("administrative_area_level_1");
+      const venueName = place.displayName || "";
+      onPlaceSelect({ name: venueName, address, city, province, formatted: place.formattedAddress || address });
+    } catch (err) {
+      console.error("Place details error:", err);
+    }
   };
 
   const handleInputChange = (e) => {
@@ -703,25 +683,31 @@ const VenueAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Sear
       />
       {showSuggestions && suggestions.length > 0 && (
         <div className="absolute z-50 w-full mt-1 rounded-lg overflow-hidden shadow-xl" style={{ background: "#0a1628", border: `1px solid rgba(84,205,249,0.2)` }}>
-          {suggestions.map((s, i) => (
-            <div
-              key={s.place_id || i}
-              className="px-3 py-2 cursor-pointer transition-colors"
-              style={{ color: "#e0e6ff", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.05)" : "none" }}
-              onMouseDown={() => handleSelect(s)}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(84,205,249,0.1)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-            >
-              <div style={{ color: "#54CDF9", fontWeight: 600 }}>{s.structured_formatting?.main_text || s.description}</div>
-              <div className="text-xs mt-0.5" style={{ color: "rgba(224,230,255,0.5)" }}>{s.structured_formatting?.secondary_text || ""}</div>
-            </div>
-          ))}
+          {suggestions.map((s, i) => {
+            const pred = s.placePrediction;
+            const mainText = pred?.mainText?.text || pred?.text?.text || "";
+            const secondaryText = pred?.secondaryText?.text || "";
+            return (
+              <div
+                key={pred?.placeId || i}
+                className="px-3 py-2 cursor-pointer transition-colors"
+                style={{ color: "#e0e6ff", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.05)" : "none" }}
+                onMouseDown={() => handleSelect(s)}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(84,205,249,0.1)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+              >
+                <div style={{ color: "#54CDF9", fontWeight: 600 }}>{mainText}</div>
+                <div className="text-xs mt-0.5" style={{ color: "rgba(224,230,255,0.5)" }}>{secondaryText}</div>
+              </div>
+            );
+          })}
         </div>
       )}
       {loading && <div className="absolute right-3 top-10 text-xs" style={{ color: BRAND.accent }}>Searching...</div>}
     </div>
   );
 };
+
 
 const Select = ({ label, value, onChange, options, placeholder }) => {
   return (
