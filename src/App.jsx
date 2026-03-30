@@ -571,6 +571,43 @@ const AddressAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "St
   const autocompleteRef = useRef(null);
 
   useEffect(() => {
+    // Inject Google Places dark theme CSS
+    const styleId = "google-places-dark-theme";
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.innerHTML = `
+        .pac-container {
+          background-color: #0a1628 !important;
+          border: 1px solid rgba(84,205,249,0.2) !important;
+          border-radius: 8px !important;
+          margin-top: 4px !important;
+          font-family: inherit !important;
+          z-index: 10000 !important;
+        }
+        .pac-item {
+          padding: 8px 12px !important;
+          color: #e0e6ff !important;
+          border-top: 1px solid rgba(255,255,255,0.05) !important;
+          cursor: pointer !important;
+        }
+        .pac-item:hover, .pac-item-selected {
+          background-color: rgba(84,205,249,0.1) !important;
+        }
+        .pac-item-query {
+          color: #54CDF9 !important;
+        }
+        .pac-matched {
+          font-weight: 600 !important;
+          color: #54CDF9 !important;
+        }
+        .pac-icon {
+          display: none !important;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
     if (!GOOGLE_MAPS_API_KEY || !inputRef.current) return;
     let isMounted = true;
     loadGoogleMaps().then(() => {
@@ -1084,21 +1121,22 @@ const DashboardPage = ({ employees = [], events = [], locations = [], shifts = [
 // PAGES: EVENTS MANAGEMENT (Phase 4)
 // ============================================================================
 
-const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
+const EventsManagementPage = ({ events = [], locations = [], venues = [], eventVenues = [], onRefresh }) => {
   const [showEventModal, setShowEventModal] = useState(false);
-  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [showVenueModal, setShowVenueModal] = useState(false);
   const [editEvent, setEditEvent] = useState(null);
-  const [editLocation, setEditLocation] = useState(null);
+  const [editVenue, setEditVenue] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState("events"); // events | locations
+  const [activeTab, setActiveTab] = useState("events"); // events | venues
   const [filterStatus, setFilterStatus] = useState("");
-  const [eventForm, setEventForm] = useState({ name: "", start_date: "", end_date: "", event_type: "festival", status: "upcoming", description: "", notes: "" });
-  const [locForm, setLocForm] = useState({ event_id: "", name: "", address: "", city: "", province: "ON", notes: "" });
+  const [eventForm, setEventForm] = useState({ name: "", start_date: "", end_date: "", event_type: "festival", status: "upcoming", description: "", notes: "", selectedVenues: [] });
+  const [venueForm, setVenueForm] = useState({ name: "", address: "", city: "", province: "ON", notes: "" });
 
-  const resetEventForm = () => setEventForm({ name: "", start_date: "", end_date: "", event_type: "festival", status: "upcoming", description: "", notes: "" });
-  const resetLocForm = () => setLocForm({ event_id: "", name: "", address: "", city: "", province: "ON", notes: "" });
+  const resetEventForm = () => setEventForm({ name: "", start_date: "", end_date: "", event_type: "festival", status: "upcoming", description: "", notes: "", selectedVenues: [] });
+  const resetVenueForm = () => setVenueForm({ name: "", address: "", city: "", province: "ON", notes: "" });
 
   const openEditEvent = (e) => {
+    const linkedVenues = eventVenues.filter(ev => ev.event_id === e.id).map(ev => ev.venue_id);
     setEditEvent(e);
     setEventForm({
       name: e.name,
@@ -1108,18 +1146,18 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
       status: e.status || "upcoming",
       description: e.description || "",
       notes: e.notes || "",
+      selectedVenues: linkedVenues,
     });
   };
 
-  const openEditLocation = (loc) => {
-    setEditLocation(loc);
-    setLocForm({
-      event_id: loc.event_id,
-      name: loc.name,
-      address: loc.address || "",
-      city: loc.city || "",
-      province: loc.province || "ON",
-      notes: loc.notes || "",
+  const openEditVenue = (ven) => {
+    setEditVenue(ven);
+    setVenueForm({
+      name: ven.name,
+      address: ven.address || "",
+      city: ven.city || "",
+      province: ven.province || "ON",
+      notes: ven.notes || "",
     });
   };
 
@@ -1135,10 +1173,24 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
       description: eventForm.description || null,
       notes: eventForm.notes || null,
     };
+    let eventId = editEvent?.id;
     if (editEvent) {
       await supabase.from("events").update(payload).eq("id", editEvent.id);
     } else {
-      await supabase.from("events").insert(payload);
+      const { data } = await supabase.from("events").insert(payload).select();
+      if (data && data[0]) eventId = data[0].id;
+    }
+    // Update event_venues junction table
+    if (eventId) {
+      const existingVenues = eventVenues.filter(ev => ev.event_id === eventId).map(ev => ev.venue_id);
+      const toDelete = existingVenues.filter(vid => !eventForm.selectedVenues.includes(vid));
+      const toAdd = eventForm.selectedVenues.filter(vid => !existingVenues.includes(vid));
+      if (toDelete.length > 0) {
+        await Promise.all(toDelete.map(vid => supabase.from("event_venues").delete().eq("event_id", eventId).eq("venue_id", vid)));
+      }
+      if (toAdd.length > 0) {
+        await supabase.from("event_venues").insert(toAdd.map(vid => ({ event_id: eventId, venue_id: vid })));
+      }
     }
     setSaving(false);
     setShowEventModal(false);
@@ -1148,7 +1200,8 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
   };
 
   const handleDeleteEvent = async (id) => {
-    if (!confirm("Delete this event and all associated locations, shifts, and requirements?")) return;
+    if (!confirm("Delete this event and all associated venues, shifts, and requirements?")) return;
+    await supabase.from("event_venues").delete().eq("event_id", id);
     await supabase.from("event_locations").delete().eq("event_id", id);
     await supabase.from("shifts").delete().eq("event_id", id);
     await supabase.from("role_requirements").delete().eq("event_id", id);
@@ -1157,32 +1210,32 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
     onRefresh?.();
   };
 
-  const handleSaveLocation = async () => {
-    if (!locForm.event_id || !locForm.name) return;
+  const handleSaveVenue = async () => {
+    if (!venueForm.name) return;
     setSaving(true);
     const payload = {
-      event_id: locForm.event_id,
-      name: locForm.name,
-      address: locForm.address || null,
-      city: locForm.city || null,
-      province: locForm.province || null,
-      notes: locForm.notes || null,
+      name: venueForm.name,
+      address: venueForm.address || null,
+      city: venueForm.city || null,
+      province: venueForm.province || null,
+      notes: venueForm.notes || null,
     };
-    if (editLocation) {
-      await supabase.from("event_locations").update(payload).eq("id", editLocation.id);
+    if (editVenue) {
+      await supabase.from("venues").update(payload).eq("id", editVenue.id);
     } else {
-      await supabase.from("event_locations").insert(payload);
+      await supabase.from("venues").insert(payload);
     }
     setSaving(false);
-    setShowLocationModal(false);
-    setEditLocation(null);
-    resetLocForm();
+    setShowVenueModal(false);
+    setEditVenue(null);
+    resetVenueForm();
     onRefresh?.();
   };
 
-  const handleDeleteLocation = async (id) => {
-    if (!confirm("Delete this location?")) return;
-    await supabase.from("event_locations").delete().eq("id", id);
+  const handleDeleteVenue = async (id) => {
+    if (!confirm("Delete this venue? This will remove it from all associated events.")) return;
+    await supabase.from("event_venues").delete().eq("venue_id", id);
+    await supabase.from("venues").delete().eq("id", id);
     onRefresh?.();
   };
 
@@ -1205,7 +1258,7 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
           {activeTab === "events" ? (
             <Btn icon={Plus} onClick={() => { resetEventForm(); setEditEvent(null); setShowEventModal(true); }}>New Event</Btn>
           ) : (
-            <Btn icon={Plus} onClick={() => { resetLocForm(); setEditLocation(null); setShowLocationModal(true); }}>New Location</Btn>
+            <Btn icon={Plus} onClick={() => { resetVenueForm(); setEditVenue(null); setShowVenueModal(true); }}>New Venue</Btn>
           )}
         </div>
       </div>
@@ -1214,12 +1267,12 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
         <StatCard label="Total Events" value={events.length} icon={Calendar} color="primary" />
         <StatCard label="Upcoming" value={upcomingEvents.length} icon={Calendar} color="success" />
         <StatCard label="Past" value={pastEvents.length} icon={Clock} color="warning" />
-        <StatCard label="Locations" value={locations.length} icon={MapPin} color="primary" />
+        <StatCard label="Venues" value={venues.length} icon={MapPin} color="primary" />
       </div>
 
       {/* Tabs */}
       <div className="flex gap-2">
-        {["events", "locations"].map(tab => (
+        {["events", "venues"].map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -1230,7 +1283,7 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
               border: `1px solid ${activeTab === tab ? BRAND.primary : BRAND.glassBorder}`,
             }}
           >
-            {tab === "events" ? "Events" : "Locations"}
+            {tab === "events" ? "Events" : "Venues"}
           </button>
         ))}
         {activeTab === "events" && (
@@ -1260,13 +1313,13 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
                   <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Type</th>
                   <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Dates</th>
                   <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Status</th>
-                  <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Locations</th>
+                  <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Venues</th>
                   <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {sortedEvents.map(e => {
-                  const eventLocs = locations.filter(l => l.event_id === e.id);
+                  const eventVenuesCount = eventVenues.filter(ev => ev.event_id === e.id).length;
                   return (
                     <tr key={e.id} className="hover:bg-white/5 transition" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
                       <td className="py-3 px-3">
@@ -1286,7 +1339,7 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
                           {e.status}
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{eventLocs.length}</td>
+                      <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{eventVenuesCount}</td>
                       <td className="py-3 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button onClick={() => openEditEvent(e)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
@@ -1307,35 +1360,37 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
         </SectionCard>
       )}
 
-      {/* Locations Tab */}
-      {activeTab === "locations" && (
-        <SectionCard title={`Locations (${locations.length})`} icon={MapPin}>
+      {/* Venues Tab */}
+      {activeTab === "venues" && (
+        <SectionCard title={`Venues (${venues.length})`} icon={MapPin}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
-                  <th className="text-left py-3 px-3" style={{ color: BRAND.primary }}>Location</th>
-                  <th className="text-left py-3 px-3" style={{ color: BRAND.primary }}>Event</th>
+                  <th className="text-left py-3 px-3" style={{ color: BRAND.primary }}>Venue Name</th>
                   <th className="text-left py-3 px-3" style={{ color: BRAND.primary }}>Address</th>
                   <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>City</th>
+                  <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Province</th>
+                  <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Events</th>
                   <th className="text-center py-3 px-3" style={{ color: BRAND.primary }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {locations.map(loc => {
-                  const event = events.find(e => e.id === loc.event_id);
+                {venues.map(ven => {
+                  const venueEventCount = eventVenues.filter(ev => ev.venue_id === ven.id).length;
                   return (
-                    <tr key={loc.id} className="hover:bg-white/5 transition" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
-                      <td className="py-3 px-3 font-medium" style={{ color: BRAND.text }}>{loc.name}</td>
-                      <td className="py-3 px-3" style={{ color: "rgba(224,230,255,0.7)" }}>{event?.name || "Unknown"}</td>
-                      <td className="py-3 px-3 text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>{loc.address || "—"}</td>
-                      <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{loc.city || "—"}</td>
+                    <tr key={ven.id} className="hover:bg-white/5 transition" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
+                      <td className="py-3 px-3 font-medium" style={{ color: BRAND.text }}>{ven.name}</td>
+                      <td className="py-3 px-3 text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>{ven.address || "—"}</td>
+                      <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{ven.city || "—"}</td>
+                      <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{ven.province || "—"}</td>
+                      <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{venueEventCount}</td>
                       <td className="py-3 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => openEditLocation(loc)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                          <button onClick={() => openEditVenue(ven)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
                             <Edit2 size={14} style={{ color: BRAND.primary }} />
                           </button>
-                          <button onClick={() => handleDeleteLocation(loc.id)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                          <button onClick={() => handleDeleteVenue(ven.id)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
                             <Trash2 size={14} style={{ color: BRAND.danger }} />
                           </button>
                         </div>
@@ -1345,7 +1400,7 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
                 })}
               </tbody>
             </table>
-            {locations.length === 0 && <EmptyState icon={MapPin} title="No locations" message="Add a location to an event" />}
+            {venues.length === 0 && <EmptyState icon={MapPin} title="No venues" message="Create your first universal venue" />}
           </div>
         </SectionCard>
       )}
@@ -1364,6 +1419,36 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
           </div>
           <Input label="Description" value={eventForm.description} onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })} placeholder="Brief description..." />
           <Input label="Notes" value={eventForm.notes} onChange={(e) => setEventForm({ ...eventForm, notes: e.target.value })} placeholder="Internal notes..." />
+          <div className="mb-4">
+            <label className="block text-sm font-medium mb-2" style={{ color: BRAND.text }}>Venues</label>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {venues.length === 0 ? (
+                <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>No venues available. Create venues in the Venues tab first.</p>
+              ) : (
+                venues.map(ven => (
+                  <label key={ven.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 transition cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={eventForm.selectedVenues.includes(ven.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setEventForm({ ...eventForm, selectedVenues: [...eventForm.selectedVenues, ven.id] });
+                        } else {
+                          setEventForm({ ...eventForm, selectedVenues: eventForm.selectedVenues.filter(id => id !== ven.id) });
+                        }
+                      }}
+                      className="w-4 h-4"
+                      style={{ accentColor: BRAND.primary }}
+                    />
+                    <div>
+                      <div className="text-sm" style={{ color: BRAND.text }}>{ven.name}</div>
+                      <div className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>{ven.city}, {ven.province}</div>
+                    </div>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
           <div className="flex justify-end gap-2 mt-4">
             <Btn variant="secondary" onClick={() => { setShowEventModal(false); setEditEvent(null); resetEventForm(); }}>Cancel</Btn>
             <Btn onClick={handleSaveEvent} disabled={saving || !eventForm.name || !eventForm.start_date || !eventForm.end_date}>{saving ? "Saving..." : editEvent ? "Update" : "Create"}</Btn>
@@ -1371,44 +1456,27 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
         </div>
       </Modal>
 
-      {/* Location Modal */}
-      <Modal isOpen={showLocationModal || !!editLocation} onClose={() => { setShowLocationModal(false); setEditLocation(null); resetLocForm(); }} title={editLocation ? "Edit Location" : "New Location"} size="md">
+      {/* Venue Modal */}
+      <Modal isOpen={showVenueModal || !!editVenue} onClose={() => { setShowVenueModal(false); setEditVenue(null); resetVenueForm(); }} title={editVenue ? "Edit Venue" : "New Venue"} size="md">
         <div className="space-y-1">
-          {!editLocation && (
-            <Select 
-              label="Copy from existing venue" 
-              value="" 
-              onChange={(e) => {
-                if (e.target.value) {
-                  const existing = locations.find(l => l.id === e.target.value);
-                  if (existing) {
-                    setLocForm({ ...locForm, name: existing.name, address: existing.address || "", city: existing.city || "", province: existing.province || "ON", notes: existing.notes || "" });
-                  }
-                }
-              }} 
-              options={[{ value: "", label: "None — create new" }, ...locations.map(l => ({ value: l.id, label: `${l.name}${l.address ? ' — ' + l.address : ''}` }))]} 
-              placeholder="Select venue to copy..." 
-            />
-          )}
-          <Select label="Event" value={locForm.event_id} onChange={(e) => setLocForm({ ...locForm, event_id: e.target.value })} options={events.map(ev => ({ value: ev.id, label: ev.name }))} placeholder="Select event..." />
-          <Input label="Location Name" value={locForm.name} onChange={(e) => setLocForm({ ...locForm, name: e.target.value })} placeholder="e.g. Main Stage Booth" />
+          <Input label="Venue Name" value={venueForm.name} onChange={(e) => setVenueForm({ ...venueForm, name: e.target.value })} placeholder="e.g. Convention Centre" />
           <AddressAutocomplete
-            value={locForm.address}
-            onChange={(e) => setLocForm({ ...locForm, address: e.target.value })}
+            value={venueForm.address}
+            onChange={(e) => setVenueForm({ ...venueForm, address: e.target.value })}
             onPlaceSelect={({ address, city, province }) => {
               const provMap = { "Ontario": "ON", "Quebec": "QC", "British Columbia": "BC", "Alberta": "AB", "Manitoba": "MB", "Saskatchewan": "SK", "Nova Scotia": "NS", "New Brunswick": "NB", "Newfoundland and Labrador": "NL", "Prince Edward Island": "PE" };
-              setLocForm({ ...locForm, address, city, province: provMap[province] || province || locForm.province });
+              setVenueForm({ ...venueForm, address, city, province: provMap[province] || province || venueForm.province });
             }}
             placeholder="Start typing an address..."
           />
           <div className="grid grid-cols-2 gap-4">
-            <Input label="City" value={locForm.city} onChange={(e) => setLocForm({ ...locForm, city: e.target.value })} placeholder="Toronto" />
-            <Select label="Province" value={locForm.province} onChange={(e) => setLocForm({ ...locForm, province: e.target.value })} options={[{ value: "ON", label: "Ontario" }, { value: "QC", label: "Quebec" }, { value: "BC", label: "British Columbia" }, { value: "AB", label: "Alberta" }, { value: "MB", label: "Manitoba" }, { value: "SK", label: "Saskatchewan" }, { value: "NS", label: "Nova Scotia" }, { value: "NB", label: "New Brunswick" }]} />
+            <Input label="City" value={venueForm.city} onChange={(e) => setVenueForm({ ...venueForm, city: e.target.value })} placeholder="Toronto" />
+            <Select label="Province" value={venueForm.province} onChange={(e) => setVenueForm({ ...venueForm, province: e.target.value })} options={[{ value: "ON", label: "Ontario" }, { value: "QC", label: "Quebec" }, { value: "BC", label: "British Columbia" }, { value: "AB", label: "Alberta" }, { value: "MB", label: "Manitoba" }, { value: "SK", label: "Saskatchewan" }, { value: "NS", label: "Nova Scotia" }, { value: "NB", label: "New Brunswick" }]} />
           </div>
-          <Input label="Notes" value={locForm.notes} onChange={(e) => setLocForm({ ...locForm, notes: e.target.value })} placeholder="Notes..." />
+          <Input label="Notes" value={venueForm.notes} onChange={(e) => setVenueForm({ ...venueForm, notes: e.target.value })} placeholder="Notes..." />
           <div className="flex justify-end gap-2 mt-4">
-            <Btn variant="secondary" onClick={() => { setShowLocationModal(false); setEditLocation(null); resetLocForm(); }}>Cancel</Btn>
-            <Btn onClick={handleSaveLocation} disabled={saving || !locForm.event_id || !locForm.name}>{saving ? "Saving..." : editLocation ? "Update" : "Create"}</Btn>
+            <Btn variant="secondary" onClick={() => { setShowVenueModal(false); setEditVenue(null); resetVenueForm(); }}>Cancel</Btn>
+            <Btn onClick={handleSaveVenue} disabled={saving || !venueForm.name}>{saving ? "Saving..." : editVenue ? "Update" : "Create"}</Btn>
           </div>
         </div>
       </Modal>
@@ -5229,6 +5297,8 @@ export default function App() {
   const [employees, setEmployees] = useState([]);
   const [events, setEvents] = useState([]);
   const [locations, setLocations] = useState([]);
+  const [venues, setVenues] = useState([]);
+  const [eventVenues, setEventVenues] = useState([]);
   const [shifts, setShifts] = useState([]);
   const [availability, setAvailability] = useState({});
   const [products, setProducts] = useState([]);
@@ -5357,10 +5427,12 @@ export default function App() {
   // Load data from Supabase
   const loadData = async () => {
     try {
-      const [empRes, evtRes, locRes, shiftRes, availRes, prodRes, stockRes, distRes, histRes, templRes, notRes, skillsRes, empSkillsRes, roleReqRes] = await Promise.all([
+      const [empRes, evtRes, locRes, venRes, evVenRes, shiftRes, availRes, prodRes, stockRes, distRes, histRes, templRes, notRes, skillsRes, empSkillsRes, roleReqRes] = await Promise.all([
         supabase.from("employees").select("*"),
         supabase.from("events").select("*"),
         supabase.from("event_locations").select("*"),
+        supabase.from("venues").select("*"),
+        supabase.from("event_venues").select("*"),
         supabase.from("shifts").select("*"),
         supabase.from("employee_availability").select("*"),
         supabase.from("products").select("*"),
@@ -5376,6 +5448,8 @@ export default function App() {
       if (empRes.data) setEmployees(empRes.data);
       if (evtRes.data) setEvents(evtRes.data);
       if (locRes.data) setLocations(locRes.data);
+      if (venRes.data) setVenues(venRes.data);
+      if (evVenRes.data) setEventVenues(evVenRes.data);
       if (shiftRes.data) setShifts(shiftRes.data);
       if (availRes.data) {
         const availObj = {};
@@ -5454,7 +5528,7 @@ export default function App() {
 
   // Setup Realtime subscriptions
   const setupRealtimeSubscriptions = () => {
-    const tables = ["employees", "events", "event_locations", "shifts", "notifications", "skills", "employee_skills", "role_requirements", "products", "stock_levels", "distributions"];
+    const tables = ["employees", "events", "event_locations", "venues", "event_venues", "shifts", "notifications", "skills", "employee_skills", "role_requirements", "products", "stock_levels", "distributions"];
 
     const subscriptions = tables.map((table) => {
       const channel = supabase
@@ -5585,7 +5659,7 @@ export default function App() {
 
     const pageContent = {
       dashboard: <DashboardPage employees={employees} events={events} locations={locations} shifts={shifts} availability={availability} products={products} stock={stock} historicSales={historicSales} />,
-      "events-manager": <EventsManagementPage events={events} locations={locations} onRefresh={loadData} />,
+      "events-manager": <EventsManagementPage events={events} locations={locations} venues={venues} eventVenues={eventVenues} onRefresh={loadData} />,
       "calendar-view": <CalendarViewPage events={events} employees={employees} shifts={shifts} locations={locations} availability={availability} employeeSkills={employeeSkills} skills={skills} />,
       "shift-builder": <ShiftBuilderPage events={events} employees={employees} shifts={shifts} locations={locations} roleRequirements={roleRequirements} onRefresh={loadData} />,
       "role-requirements": <RoleRequirementsPage events={events} shifts={shifts} locations={locations} employees={employees} roleRequirements={roleRequirements} onRefresh={loadData} />,
