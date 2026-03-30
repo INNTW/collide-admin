@@ -608,24 +608,34 @@ const VenueAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Sear
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       setLoading(true);
-      autocompleteRef.current.getPlacePredictions(
-        {
-          input,
-          types: ["establishment"],
-          componentRestrictions: { country: "ca" },
-          sessionToken: sessionTokenRef.current,
-        },
-        (predictions, status) => {
-          setLoading(false);
-          if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
-            setSuggestions(predictions);
-            setShowSuggestions(true);
-          } else {
-            setSuggestions([]);
-            setShowSuggestions(false);
+      // Safety timeout — clear "Searching..." if callback never fires (e.g. API not activated)
+      const safetyTimeout = setTimeout(() => { setLoading(false); }, 5000);
+      try {
+        autocompleteRef.current.getPlacePredictions(
+          {
+            input,
+            types: ["establishment"],
+            componentRestrictions: { country: "ca" },
+            sessionToken: sessionTokenRef.current,
+          },
+          (predictions, status) => {
+            clearTimeout(safetyTimeout);
+            setLoading(false);
+            if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
+              setSuggestions(predictions);
+              setShowSuggestions(true);
+            } else {
+              console.warn("Places API returned status:", status);
+              setSuggestions([]);
+              setShowSuggestions(false);
+            }
           }
-        }
-      );
+        );
+      } catch (err) {
+        clearTimeout(safetyTimeout);
+        setLoading(false);
+        console.error("Places API error:", err);
+      }
     }, 300);
   };
 
