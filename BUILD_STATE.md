@@ -1,140 +1,93 @@
 # Collide Staff Manager — Build State
 
-> **Last Updated:** 2026-03-29 01:00 EST
+> **Last Updated:** 2026-03-30 16:19 EST
 
-## Current Phase: v5.1 — Modular Architecture + Security Fixes (BUILD PASSING)
+## Current Phase: v5.2+ — Deployed on Vercel, Google Places integrated
 
-## Completed in v5.1
+## Completed Features
 
-### Priority 1: Split App.jsx into modules ✅
-- **Before:** 5,824-line monolith in `src/App.jsx`
-- **After:** 822-line thin shell + 43 modular files
-- Extracted 5 constants → `src/constants/`
-- Extracted 2 lib utilities → `src/lib/`
-- Extracted 1 util → `src/utils/`
-- Extracted 9 shared UI components → `src/components/`
-- Extracted 22 page components → `src/pages/`
-- Build passes, dev server runs
+### v1.0 — Core App (Session 1)
+- [x] Supabase schema designed (employees, events, locations, shifts, pay periods, pay records)
+- [x] React app scaffold with sidebar navigation
+- [x] Dashboard page (stats, upcoming events, conflict detection)
+- [x] Employee management (CRUD, SIN masking, profiles, search/filter)
+- [x] Event management (CRUD, multi-location, expandable cards)
+- [x] Schedule page (event selector, shift assignment, per-day/per-location grid)
+- [x] Pay sheets (date range filter, per-employee breakdowns, simplified deductions)
+- [x] Print-ready views for schedules and pay sheets
 
-### Priority 4: Security Fixes ✅
-- [x] **B1:** Removed demo credentials from login UI
-- [x] **B2:** Replaced hardcoded Supabase URL with `import.meta.env.VITE_SUPABASE_URL` in UserManagementPage
-- [x] **B3:** Changed password reset field from `type="text"` to `type="password"`
+### v2.0 — Full Feature Set (Session 1, continued)
+- [x] Availability tracking system (per-employee, per-date, cycle through available/tentative/unavailable)
+- [x] Availability matrix on Schedule page (shows who's free on which event days)
+- [x] Shift templates (3 presets: Standard Day, Long Festival, Weekend Pop-Up)
+- [x] Clock-in/out UI (timer button per shift, records actual_start/actual_end)
+- [x] CSV export (employees, schedules, pay sheets)
+- [x] Event cost estimator (staff count, total hours, est. labour cost per event)
+- [x] Notifications page (compose, send schedule-published/shift-reminder notifications)
+- [x] Inventory — Products tab (catalog with SKU, cost, retail, margin, stock levels)
+- [x] Inventory — Stock & Distribution tab (send inventory to events, track sent/sold/returned)
+- [x] Inventory — Projections tab (historic sell-through → recommended quantities with 15% buffer)
+- [x] Inventory — Historic Analytics tab (revenue by product, sell-through by event, monthly trends, full history table)
+- [x] Reports page (YoY revenue, staff utilization, category pie chart, labour vs revenue)
+- [x] Supabase schema v2 (14 tables: products, stock_levels, distributions, historic_sales, employee_availability, shift_templates, notifications + RLS + views + triggers)
 
-## What Works (v5.1)
+### v3.0 — Auth, Roles & Tax Engine (Session 1, continued)
+- [x] CRA-accurate tax engine (`TAX_CONFIG_2026` + `CRATax` object with all 2026 rates from canada.ca)
+- [x] CPP1 + CPP2 calculation with annual maximums and YTD tracking
+- [x] EI calculation with annual max premium
+- [x] Federal tax brackets (14%, 20.5%, 26%, 29%, 33%) with K constants
+- [x] Ontario provincial tax brackets with KP constants + surtax
+- [x] T4 summary generation (boxes 14, 16, 16A, 18, 22, 24, 26)
+- [x] Auth system with Supabase Auth (email/password)
+- [x] Role-gated navigation (ADMIN_NAV vs EMPLOYEE_NAV)
+- [x] Employee portal with 5 tabs (My Shifts, My Pay, Availability, Inventory Entry, Team)
+- [x] Self clock-in/out on employee portal
+- [x] Team Lead clock-in/out for team members
+- [x] Pay Sheets page updated to use CRATax.calcPayPeriod() instead of flat rates
+- [x] Supabase schema v3 — auth_user_id on employees, role-based RLS policies, helper functions, 4 secure views
 
-- [x] Supabase Auth (email/password, JWT, session persistence, Web Locks bypass)
-- [x] Role-based access control (admin/team_lead/employee via NAV_TREE + hasPageAccess)
-- [x] Hash-based routing with browser back/forward
-- [x] Events Manager (CRUD events + locations, status filter, shared venue copy)
-- [x] Calendar View (month view, day drill-down, shift schedule by hour)
-- [x] Shift Builder (select event, assign employees to shifts, delete shifts)
-- [x] Role Requirements (define role needs per event, fill rate progress bars)
-- [x] Availability (weekly view, tap-to-cycle status, raw fetch save)
-- [x] My Shifts (employee view, grouped by event, upcoming/past/all filter)
-- [x] Employee Directory (search, skill filter, cards with contact info)
-- [x] Skills & Tags (assign skills to employees with proficiency levels)
-- [x] Inventory Products (CRUD, categories, cost/retail/margin, stock levels)
-- [x] Inventory Stock & Distribution (stock adjustments, event distributions)
-- [x] Inventory Analytics (charts: stock trends, revenue by product, category breakdown)
-- [x] Inventory Projections (forecast demand based on historic sell-through)
-- [x] Sales Projections (revenue forecasting by event type with growth slider)
-- [x] Staffing Projections (staffing needs vs capacity, fill rate, labor cost)
-- [x] Event P&L Estimator (revenue - COGS - labor - fixed, margin analysis)
-- [x] CRA 2026 Tax Engine (CPP1, CPP2, EI, federal/Ontario brackets, surtax, T4 generation)
-- [x] SIN Encryption (AES-256-GCM via Web Crypto API)
-- [x] User Management (Edge Function: invite, role update, password reset, enable/disable)
-- [x] Realtime subscriptions (11 tables auto-refresh on change)
-- [x] Mobile responsive (drawer sidebar, touch targets, viewport detection)
-- [x] Command palette (Cmd+K search across all pages)
-- [x] Modular file architecture (43 files across 6 directories)
+### v5.1 — Modular Architecture Split (Session 2+)
+- [x] Split monolithic App.jsx into 43 modular files (constants/, lib/, utils/, components/, pages/)
+- [x] App.jsx now thin shell (~822 lines for auth, routing, layout, data loading)
+- [x] Security fixes: removed demo credentials from login, fixed hardcoded Supabase URL
 
-## What's Broken
+### v5.2 — Feature Wiring & Polish (Session 3+)
+- [x] Dashboard wired to real data (avg shift duration, payroll, shifts/week)
+- [x] Reports wired to real data (staff trends, payroll breakdown, YTD)
+- [x] Payroll wired to CRATax.calcPayPeriod() for real pay stubs
+- [x] Employee profiles: full editing (phone, SIN, address, emergency contact, TD1)
+- [x] Error boundaries wrapping page content
+- [x] Hash-based URL routing (#/dashboard, #/events-manager, etc.)
+- [x] Deployed to Vercel at collide-staff-manager.vercel.app
 
-- [ ] **BUG:** Dashboard "Avg Shift Duration" hardcoded to "6.5h" — not calculated from data
-- [ ] **BUG:** Dashboard "Payroll This Month" hardcoded to $0.00
-- [ ] **BUG:** Reports page charts use hardcoded demo arrays, not real data
-- [ ] **BUG:** Reports "Avg Wage/Hour" hardcoded to $28.50
-- [ ] **BUG:** Directory Edit/View buttons have no onClick handlers — dead buttons
-- [ ] **BUG:** Payroll page `employeePayroll = []` — no real pay record data
-- [ ] **BUG:** Notifications shows fake placeholder data when no DB notifications exist
-- [ ] **BUG:** Settings checkboxes not wired to state (defaultChecked but no onChange)
-- [ ] **BUG:** Realtime: any change to any table reloads ALL 14 tables (thundering herd)
+### v5.3 — Universal Venues & Google Places (Session 4, 2026-03-30)
+- [x] Universal venues system: venues table + event_venues junction (many-to-many)
+- [x] Venues tab on Events Manager page (CRUD for venue locations)
+- [x] Google Places autocomplete on Venue Name field using Places API (New)
+- [x] `VenueAutocomplete` component: `AutocompleteSuggestion.fetchAutocompleteSuggestions()` + `Place.fetchFields()`
+- [x] Auto-fills venue name, street address, city, and province from Google selection
+- [x] Session tokens for billing optimization
+- [x] Debounce (300ms) and click-outside-to-close on dropdown
 
-## What's Missing
+## Files
 
-- [ ] Employee CRUD (add new employee, edit employee profile)
-- [ ] Clock-in/out system (was in v2/v3 design, not implemented in v5)
-- [ ] CSV export (was in v2 design, not in current code)
-- [ ] Shift templates UI (data loaded via Supabase but never rendered)
-- [ ] Shift date picker in Shift Builder (defaults to event start_date always)
-- [ ] Error boundaries (crash in any page kills the whole app)
-- [ ] Input validation on forms (client-side before Supabase calls)
-- [ ] Delete confirmation modals (some use browser `confirm()`, some have none)
-- [ ] Audit logging (who changed what, when)
-- [ ] Offline support / PWA
-- [ ] Email notifications via Supabase
-- [ ] Batch operations (bulk import employees/products)
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/App.jsx` | ~6000+ | Main React app — all pages, auth, venues, Google Places, CRA tax engine |
+| `src/constants/` | — | BRAND, TAX_CONFIG, NAV_TREE, EVENT_TYPE_DEFAULTS |
+| `src/lib/` | — | Tax engine, SIN encryption |
+| `src/utils/` | — | Formatters |
+| `src/components/` | — | 9 shared UI components |
+| `src/pages/` | — | 22 page components |
+| `supabase-schema.sql` | ~400+ | Full Supabase schema — 14+ tables, role-based RLS, helper functions, views, triggers |
+| `CLAUDE.md` | — | Session boot instructions, architecture decisions, gotchas |
+| `BUILD_STATE.md` | — | This file — live progress snapshot |
+| `BUILD_JOURNAL.md` | — | Append-only decision log |
+| `PLAN.md` | — | Architecture, roadmap, schemas |
 
-## File Architecture (v5.1)
+## What's Next
 
-```
-src/
-├── App.jsx                          (822 lines — thin shell: auth, routing, layout)
-├── main.jsx                         (entry point)
-├── index.css                        (Tailwind imports)
-├── constants/
-│   ├── index.js                     (barrel export)
-│   ├── brand.js                     (BRAND design tokens)
-│   ├── tax.js                       (TAX_CONFIG_2026)
-│   ├── nav.js                       (NAV_TREE with role-based access)
-│   └── events.js                    (EVENT_TYPE_DEFAULTS, PRODUCT_CATEGORIES)
-├── lib/
-│   ├── supabase.js                  (Supabase client + Web Locks bypass)
-│   ├── tax-engine.js                (CRATax: CPP, EI, federal/Ontario, T4)
-│   └── sin-encryption.js            (AES-256-GCM encryption)
-├── utils/
-│   └── formatters.js                (formatDate, formatTime, currency)
-├── components/
-│   ├── index.js                     (barrel export)
-│   ├── Badge.jsx
-│   ├── Btn.jsx
-│   ├── CommandPalette.jsx
-│   ├── EmptyState.jsx
-│   ├── Input.jsx
-│   ├── Modal.jsx
-│   ├── SectionCard.jsx
-│   ├── Select.jsx
-│   └── StatCard.jsx
-└── pages/
-    ├── LoginPage.jsx
-    ├── DashboardPage.jsx
-    ├── EventsManagementPage.jsx
-    ├── CalendarViewPage.jsx
-    ├── ShiftBuilderPage.jsx
-    ├── RoleRequirementsPage.jsx
-    ├── DirectoryPage.jsx
-    ├── SkillsTagsPage.jsx
-    ├── AvailabilityPage.jsx
-    ├── MyShiftsPage.jsx
-    ├── PayrollPage.jsx
-    ├── ReportsPage.jsx
-    ├── InventoryProductsPage.jsx
-    ├── InventoryStockPage.jsx
-    ├── InventoryAnalyticsPage.jsx
-    ├── InventoryProjectionsPage.jsx
-    ├── SalesProjectionsPage.jsx
-    ├── StaffingProjectionsPage.jsx
-    ├── EventPnLPage.jsx
-    ├── NotificationsPage.jsx
-    ├── UserManagementPage.jsx
-    └── SettingsPage.jsx
-```
-
-## What's Next (Remaining Priorities)
-
-1. ~~**Split App.jsx into modules**~~ ✅ DONE
-2. **Fix broken/placeholder pages** — Dashboard, Payroll, Reports, Directory buttons, Notifications
-3. **Add React Router** — Replace fragile hash routing with react-router-dom
-4. ~~**Fix security issues**~~ ✅ DONE
-5. **Implement missing core features** — Employee CRUD, clock-in/out, shift date picker, connect payroll to real data
+1. **Client-side SIN encryption** — AES-256-GCM via Web Crypto API before storing
+2. **Mobile-responsive employee portal** — Touch-friendly for on-site use at events
+3. **Real-time notifications** — Supabase Realtime for schedule publishes and shift reminders
+4. **Google API key restriction** — Restrict to collide-staff-manager.vercel.app domain in Google Cloud Console
