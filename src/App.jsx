@@ -552,21 +552,19 @@ const Input = ({ label, value, onChange, type = "text", placeholder, error }) =>
 
 // Google Places Autocomplete for address fields
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-let googleMapsLoaded = false;
-let googleMapsLoading = false;
-let googleMapsLoadPromise = null;
-const loadGoogleMaps = () => {
-  if (googleMapsLoaded) return Promise.resolve();
-  if (googleMapsLoading) return googleMapsLoadPromise;
-  googleMapsLoading = true;
-  googleMapsLoadPromise = new Promise((resolve) => {
+let placesLibPromise = null;
+const loadGooglePlaces = () => {
+  if (placesLibPromise) return placesLibPromise;
+  placesLibPromise = new Promise((resolve) => {
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&loading=async`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&loading=async`;
     script.async = true;
-    script.onload = () => { googleMapsLoaded = true; resolve(); };
+    script.onload = () => {
+      window.google.maps.importLibrary("places").then(resolve);
+    };
     document.head.appendChild(script);
   });
-  return googleMapsLoadPromise;
+  return placesLibPromise;
 };
 
 const VenueAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Search venue name..." }) => {
@@ -581,10 +579,10 @@ const VenueAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Sear
   useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY) return;
     let isMounted = true;
-    loadGoogleMaps().then(() => {
-      if (!isMounted || !window.google) return;
-      autocompleteRef.current = new window.google.maps.places.AutocompleteService();
-      sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+    loadGooglePlaces().then((placesLib) => {
+      if (!isMounted) return;
+      autocompleteRef.current = new placesLib.AutocompleteService();
+      sessionTokenRef.current = new placesLib.AutocompleteSessionToken();
     });
     return () => { isMounted = false; };
   }, []);
