@@ -554,78 +554,90 @@ const Input = ({ label, value, onChange, type = "text", placeholder, error }) =>
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 let googleMapsLoaded = false;
 let googleMapsLoading = false;
+let googleMapsLoadPromise = null;
 const loadGoogleMaps = () => {
-  if (googleMapsLoaded || googleMapsLoading) return Promise.resolve();
+  if (googleMapsLoaded) return Promise.resolve();
+  if (googleMapsLoading) return googleMapsLoadPromise;
   googleMapsLoading = true;
-  return new Promise((resolve) => {
+  googleMapsLoadPromise = new Promise((resolve) => {
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places&loading=async`;
     script.async = true;
     script.onload = () => { googleMapsLoaded = true; resolve(); };
     document.head.appendChild(script);
   });
+  return googleMapsLoadPromise;
 };
 
 const VenueAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Search venue name..." }) => {
-  const inputRef = useRef(null);
+  const containerRef = useRef(null);
   const autocompleteRef = useRef(null);
+  const sessionTokenRef = useRef(null);
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const debounceRef = useRef(null);
 
   useEffect(() => {
-    // Inject Google Places dark theme CSS
-    const styleId = "google-places-dark-theme";
-    if (!document.getElementById(styleId)) {
-      const style = document.createElement("style");
-      style.id = styleId;
-      style.innerHTML = `
-        .pac-container {
-          background-color: #0a1628 !important;
-          border: 1px solid rgba(84,205,249,0.2) !important;
-          border-radius: 8px !important;
-          margin-top: 4px !important;
-          font-family: inherit !important;
-          z-index: 10000 !important;
-        }
-        .pac-item {
-          padding: 8px 12px !important;
-          color: #e0e6ff !important;
-          border-top: 1px solid rgba(255,255,255,0.05) !important;
-          cursor: pointer !important;
-        }
-        .pac-item:hover, .pac-item-selected {
-          background-color: rgba(84,205,249,0.1) !important;
-        }
-        .pac-item-query {
-          color: #54CDF9 !important;
-        }
-        .pac-matched {
-          font-weight: 600 !important;
-          color: #54CDF9 !important;
-        }
-        .pac-icon {
-          display: none !important;
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    if (!GOOGLE_MAPS_API_KEY || !inputRef.current) return;
+    if (!GOOGLE_MAPS_API_KEY) return;
     let isMounted = true;
     loadGoogleMaps().then(() => {
-      if (!isMounted || !inputRef.current || !window.google) return;
-      autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
-        types: ["establishment"],
-        componentRestrictions: { country: "ca" },
+      if (!isMounted || !window.google) return;
+      autocompleteRef.current = new window.google.maps.places.AutocompleteService();
+      sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+    });
+    return () => { isMounted = false; };
+  }, []);
+
+  const fetchSuggestions = (input) => {
+    if (!input || input.length < 2 || !autocompleteRef.current) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setLoading(true);
+      autocompleteRef.current.getPlacePredictions(
+        {
+          input,
+          types: ["establishment"],
+          componentRestrictions: { country: "ca" },
+          sessionToken: sessionTokenRef.current,
+        },
+        (predictions, status) => {
+          setLoading(false);
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
+            setSuggestions(predictions);
+            setShowSuggestions(true);
+          } else {
+            setSuggestions([]);
+            setShowSuggestions(false);
+          }
+        }
+      );
+    }, 300);
+  };
+
+  const handleSelect = (prediction) => {
+    setShowSuggestions(false);
+    setSuggestions([]);
+    const placesService = new window.google.maps.places.PlacesService(document.createElement("div"));
+    placesService.getDetails(
+      {
+        placeId: prediction.place_id,
         fields: ["address_components", "formatted_address", "name"],
-      });
-      autocompleteRef.current.addListener("place_changed", () => {
-        const place = autocompleteRef.current.getPlace();
-        if (!place.address_components) return;
+        sessionToken: sessionTokenRef.current,
+      },
+      (place, status) => {
+        sessionTokenRef.current = new window.google.maps.places.AutocompleteSessionToken();
+        if (status !== window.google.maps.places.PlacesServiceStatus.OK || !place) return;
         const get = (type) => {
-          const comp = place.address_components.find(c => c.types.includes(type));
+          const comp = (place.address_components || []).find(c => c.types.includes(type));
           return comp ? comp.long_name : "";
         };
         const getShort = (type) => {
-          const comp = place.address_components.find(c => c.types.includes(type));
+          const comp = (place.address_components || []).find(c => c.types.includes(type));
           return comp ? comp.short_name : "";
         };
         const streetNumber = get("street_number");
@@ -635,19 +647,33 @@ const VenueAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Sear
         const province = getShort("administrative_area_level_1");
         const venueName = place.name || "";
         onPlaceSelect({ name: venueName, address, city, province, formatted: place.formatted_address || address });
-      });
-    });
-    return () => { isMounted = false; };
+      }
+    );
+  };
+
+  const handleInputChange = (e) => {
+    onChange(e);
+    fetchSuggestions(e.target.value);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   return (
-    <div className="mb-4">
+    <div className="mb-4 relative" ref={containerRef}>
       <label className="block text-sm font-medium mb-2" style={{ color: BRAND.text }}>Venue Name</label>
       <input
-        ref={inputRef}
         type="text"
         value={value}
-        onChange={onChange}
+        onChange={handleInputChange}
+        onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
         placeholder={placeholder}
         className="w-full px-4 py-2 rounded-lg text-white transition focus:outline-none focus:ring-2"
         style={{
@@ -655,6 +681,24 @@ const VenueAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Sear
           border: `1px solid ${BRAND.glassBorder}`,
         }}
       />
+      {showSuggestions && suggestions.length > 0 && (
+        <div className="absolute z-50 w-full mt-1 rounded-lg overflow-hidden shadow-xl" style={{ background: "#0a1628", border: `1px solid rgba(84,205,249,0.2)` }}>
+          {suggestions.map((s, i) => (
+            <div
+              key={s.place_id || i}
+              className="px-3 py-2 cursor-pointer transition-colors"
+              style={{ color: "#e0e6ff", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.05)" : "none" }}
+              onMouseDown={() => handleSelect(s)}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(84,205,249,0.1)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              <div style={{ color: "#54CDF9", fontWeight: 600 }}>{s.structured_formatting?.main_text || s.description}</div>
+              <div className="text-xs mt-0.5" style={{ color: "rgba(224,230,255,0.5)" }}>{s.structured_formatting?.secondary_text || ""}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {loading && <div className="absolute right-3 top-10 text-xs" style={{ color: BRAND.accent }}>Searching...</div>}
     </div>
   );
 };
