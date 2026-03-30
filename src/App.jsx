@@ -550,6 +550,77 @@ const Input = ({ label, value, onChange, type = "text", placeholder, error }) =>
   );
 };
 
+// Google Places Autocomplete for address fields
+const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+let googleMapsLoaded = false;
+let googleMapsLoading = false;
+const loadGoogleMaps = () => {
+  if (googleMapsLoaded || googleMapsLoading) return Promise.resolve();
+  googleMapsLoading = true;
+  return new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
+    script.async = true;
+    script.onload = () => { googleMapsLoaded = true; resolve(); };
+    document.head.appendChild(script);
+  });
+};
+
+const AddressAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Start typing an address..." }) => {
+  const inputRef = useRef(null);
+  const autocompleteRef = useRef(null);
+
+  useEffect(() => {
+    if (!GOOGLE_MAPS_API_KEY || !inputRef.current) return;
+    let isMounted = true;
+    loadGoogleMaps().then(() => {
+      if (!isMounted || !inputRef.current || !window.google) return;
+      autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
+        types: ["address"],
+        componentRestrictions: { country: "ca" },
+        fields: ["address_components", "formatted_address", "name"],
+      });
+      autocompleteRef.current.addListener("place_changed", () => {
+        const place = autocompleteRef.current.getPlace();
+        if (!place.address_components) return;
+        const get = (type) => {
+          const comp = place.address_components.find(c => c.types.includes(type));
+          return comp ? comp.long_name : "";
+        };
+        const getShort = (type) => {
+          const comp = place.address_components.find(c => c.types.includes(type));
+          return comp ? comp.short_name : "";
+        };
+        const streetNumber = get("street_number");
+        const route = get("route");
+        const address = streetNumber ? `${streetNumber} ${route}` : route;
+        const city = get("locality") || get("sublocality_level_1") || get("administrative_area_level_3");
+        const province = getShort("administrative_area_level_1");
+        onPlaceSelect({ address, city, province, formatted: place.formatted_address || address });
+      });
+    });
+    return () => { isMounted = false; };
+  }, []);
+
+  return (
+    <div className="mb-4">
+      <label className="block text-sm font-medium mb-2" style={{ color: BRAND.text }}>Address</label>
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        className="w-full px-4 py-2 rounded-lg text-white transition focus:outline-none focus:ring-2"
+        style={{
+          background: "rgba(255,255,255,0.05)",
+          border: `1px solid ${BRAND.glassBorder}`,
+        }}
+      />
+    </div>
+  );
+};
+
 const Select = ({ label, value, onChange, options, placeholder }) => {
   return (
     <div className="mb-4">
@@ -1321,7 +1392,15 @@ const EventsManagementPage = ({ events = [], locations = [], onRefresh }) => {
           )}
           <Select label="Event" value={locForm.event_id} onChange={(e) => setLocForm({ ...locForm, event_id: e.target.value })} options={events.map(ev => ({ value: ev.id, label: ev.name }))} placeholder="Select event..." />
           <Input label="Location Name" value={locForm.name} onChange={(e) => setLocForm({ ...locForm, name: e.target.value })} placeholder="e.g. Main Stage Booth" />
-          <Input label="Address" value={locForm.address} onChange={(e) => setLocForm({ ...locForm, address: e.target.value })} placeholder="123 Street..." />
+          <AddressAutocomplete
+            value={locForm.address}
+            onChange={(e) => setLocForm({ ...locForm, address: e.target.value })}
+            onPlaceSelect={({ address, city, province }) => {
+              const provMap = { "Ontario": "ON", "Quebec": "QC", "British Columbia": "BC", "Alberta": "AB", "Manitoba": "MB", "Saskatchewan": "SK", "Nova Scotia": "NS", "New Brunswick": "NB", "Newfoundland and Labrador": "NL", "Prince Edward Island": "PE" };
+              setLocForm({ ...locForm, address, city, province: provMap[province] || province || locForm.province });
+            }}
+            placeholder="Start typing an address..."
+          />
           <div className="grid grid-cols-2 gap-4">
             <Input label="City" value={locForm.city} onChange={(e) => setLocForm({ ...locForm, city: e.target.value })} placeholder="Toronto" />
             <Select label="Province" value={locForm.province} onChange={(e) => setLocForm({ ...locForm, province: e.target.value })} options={[{ value: "ON", label: "Ontario" }, { value: "QC", label: "Quebec" }, { value: "BC", label: "British Columbia" }, { value: "AB", label: "Alberta" }, { value: "MB", label: "Manitoba" }, { value: "SK", label: "Saskatchewan" }, { value: "NS", label: "Nova Scotia" }, { value: "NB", label: "New Brunswick" }]} />
