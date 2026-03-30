@@ -555,13 +555,15 @@ const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 let placesLibPromise = null;
 const loadGooglePlaces = () => {
   if (placesLibPromise) return placesLibPromise;
-  placesLibPromise = new Promise((resolve) => {
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&loading=async`;
-    script.async = true;
-    script.onload = () => {
-      window.google.maps.importLibrary("places").then(resolve);
+  placesLibPromise = new Promise((resolve, reject) => {
+    // Use the inline bootstrap loader so importLibrary works
+    window.__googleMapsCallback = () => {
+      window.google.maps.importLibrary("places").then(resolve).catch(reject);
     };
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=__googleMapsCallback`;
+    script.async = true;
+    script.onerror = reject;
     document.head.appendChild(script);
   });
   return placesLibPromise;
