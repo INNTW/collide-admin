@@ -566,7 +566,7 @@ const loadGoogleMaps = () => {
   });
 };
 
-const AddressAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Start typing an address..." }) => {
+const VenueAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Search venue name..." }) => {
   const inputRef = useRef(null);
   const autocompleteRef = useRef(null);
 
@@ -613,7 +613,7 @@ const AddressAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "St
     loadGoogleMaps().then(() => {
       if (!isMounted || !inputRef.current || !window.google) return;
       autocompleteRef.current = new window.google.maps.places.Autocomplete(inputRef.current, {
-        types: ["address"],
+        types: ["establishment"],
         componentRestrictions: { country: "ca" },
         fields: ["address_components", "formatted_address", "name"],
       });
@@ -633,7 +633,8 @@ const AddressAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "St
         const address = streetNumber ? `${streetNumber} ${route}` : route;
         const city = get("locality") || get("sublocality_level_1") || get("administrative_area_level_3");
         const province = getShort("administrative_area_level_1");
-        onPlaceSelect({ address, city, province, formatted: place.formatted_address || address });
+        const venueName = place.name || "";
+        onPlaceSelect({ name: venueName, address, city, province, formatted: place.formatted_address || address });
       });
     });
     return () => { isMounted = false; };
@@ -641,7 +642,7 @@ const AddressAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "St
 
   return (
     <div className="mb-4">
-      <label className="block text-sm font-medium mb-2" style={{ color: BRAND.text }}>Address</label>
+      <label className="block text-sm font-medium mb-2" style={{ color: BRAND.text }}>Venue Name</label>
       <input
         ref={inputRef}
         type="text"
@@ -1459,16 +1460,16 @@ const EventsManagementPage = ({ events = [], locations = [], venues = [], eventV
       {/* Venue Modal */}
       <Modal isOpen={showVenueModal || !!editVenue} onClose={() => { setShowVenueModal(false); setEditVenue(null); resetVenueForm(); }} title={editVenue ? "Edit Venue" : "New Venue"} size="md">
         <div className="space-y-1">
-          <Input label="Venue Name" value={venueForm.name} onChange={(e) => setVenueForm({ ...venueForm, name: e.target.value })} placeholder="e.g. Convention Centre" />
-          <AddressAutocomplete
-            value={venueForm.address}
-            onChange={(e) => setVenueForm({ ...venueForm, address: e.target.value })}
-            onPlaceSelect={({ address, city, province }) => {
+          <VenueAutocomplete
+            value={venueForm.name}
+            onChange={(e) => setVenueForm({ ...venueForm, name: e.target.value })}
+            onPlaceSelect={({ name, address, city, province }) => {
               const provMap = { "Ontario": "ON", "Quebec": "QC", "British Columbia": "BC", "Alberta": "AB", "Manitoba": "MB", "Saskatchewan": "SK", "Nova Scotia": "NS", "New Brunswick": "NB", "Newfoundland and Labrador": "NL", "Prince Edward Island": "PE" };
-              setVenueForm({ ...venueForm, address, city, province: provMap[province] || province || venueForm.province });
+              setVenueForm({ ...venueForm, name: name || venueForm.name, address, city, province: provMap[province] || province || venueForm.province });
             }}
-            placeholder="Start typing an address..."
+            placeholder="Search venue name (e.g. Chesswood Arena)"
           />
+          <Input label="Address" value={venueForm.address} onChange={(e) => setVenueForm({ ...venueForm, address: e.target.value })} placeholder="Street address" />
           <div className="grid grid-cols-2 gap-4">
             <Input label="City" value={venueForm.city} onChange={(e) => setVenueForm({ ...venueForm, city: e.target.value })} placeholder="Toronto" />
             <Select label="Province" value={venueForm.province} onChange={(e) => setVenueForm({ ...venueForm, province: e.target.value })} options={[{ value: "ON", label: "Ontario" }, { value: "QC", label: "Quebec" }, { value: "BC", label: "British Columbia" }, { value: "AB", label: "Alberta" }, { value: "MB", label: "Manitoba" }, { value: "SK", label: "Saskatchewan" }, { value: "NS", label: "Nova Scotia" }, { value: "NB", label: "New Brunswick" }]} />
