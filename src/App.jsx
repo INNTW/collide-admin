@@ -555,14 +555,24 @@ const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 let placesLibPromise = null;
 const loadGooglePlaces = () => {
   if (placesLibPromise) return placesLibPromise;
+  // If already loaded from a previous call, resolve immediately
+  if (window.google?.maps?.places?.AutocompleteService) {
+    placesLibPromise = Promise.resolve(window.google.maps.places);
+    return placesLibPromise;
+  }
   placesLibPromise = new Promise((resolve, reject) => {
-    // Use the inline bootstrap loader so importLibrary works
-    window.__googleMapsCallback = () => {
-      window.google.maps.importLibrary("places").then(resolve).catch(reject);
-    };
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&callback=__googleMapsCallback`;
+    // Load with libraries=places — the places library is bundled with the main script
+    // No async loading, no importLibrary — just a simple onload callback
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
     script.async = true;
+    script.onload = () => {
+      if (window.google?.maps?.places?.AutocompleteService) {
+        resolve(window.google.maps.places);
+      } else {
+        reject(new Error("Google Places library failed to load"));
+      }
+    };
     script.onerror = reject;
     document.head.appendChild(script);
   });
