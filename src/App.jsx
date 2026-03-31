@@ -2137,55 +2137,113 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
   const [selectedEvent, setSelectedEvent] = useState(events[0]?.id || "");
   const [roles, setRoles] = useState([]);
   const [showAddRole, setShowAddRole] = useState(false);
-  const [newRole, setNewRole] = useState({
-    role_name: "Sales Lead",
-    quantity_needed: 1,
+  const [showRoleManager, setShowRoleManager] = useState(false);
+  const [editingRole, setEditingRole] = useState(null);
+  const [editForm, setEditForm] = useState({ role_name: "", qty_needed: 1 });
+  const [newRole, setNewRole] = useState({ role_name: "", quantity_needed: 1 });
+  const [customRoleName, setCustomRoleName] = useState("");
+  const [customRoleDesc, setCustomRoleDesc] = useState("");
+  const [editingDef, setEditingDef] = useState(null);
+  const [editDefName, setEditDefName] = useState("");
+  const [editDefDesc, setEditDefDesc] = useState("");
+
+  // Role definitions: stored in localStorage, synced with predefined defaults
+  const DEFAULT_ROLE_DEFS = [
+    { name: "Sales Lead", description: "Leads the sales team at booth. Handles customer interactions, upselling, and oversees cash handling." },
+    { name: "Cashier", description: "Processes all transactions. Manages POS terminal, handles cash and card payments, provides receipts." },
+    { name: "Stock Runner", description: "Keeps booth stocked. Moves inventory from storage to display, tracks what's selling fast." },
+    { name: "Setup Crew", description: "Handles event setup and teardown. Assembles displays, signage, and ensures booth is show-ready." },
+    { name: "Team Lead", description: "Oversees entire booth operation. Manages staff breaks, resolves issues, reports to admin." },
+  ];
+
+  const [roleDefs, setRoleDefs] = useState(() => {
+    try {
+      const saved = localStorage.getItem("collide_role_definitions");
+      return saved ? JSON.parse(saved) : DEFAULT_ROLE_DEFS;
+    } catch { return DEFAULT_ROLE_DEFS; }
   });
+
+  useEffect(() => {
+    localStorage.setItem("collide_role_definitions", JSON.stringify(roleDefs));
+  }, [roleDefs]);
 
   useEffect(() => {
     const eventRoles = roleRequirements.filter((r) => r.event_id === selectedEvent);
     setRoles(eventRoles);
   }, [selectedEvent, roleRequirements]);
 
-  const predefinedRoles = [
-    "Sales Lead",
-    "Cashier",
-    "Stock Runner",
-    "Setup Crew",
-    "Team Lead",
-  ];
+  const getRoleDesc = (name) => {
+    const def = roleDefs.find(d => d.name === name);
+    return def?.description || "";
+  };
 
+  // --- Role Definition CRUD ---
+  const handleAddRoleDef = () => {
+    if (!customRoleName.trim()) return;
+    if (roleDefs.some(d => d.name.toLowerCase() === customRoleName.trim().toLowerCase())) {
+      alert("A role with this name already exists");
+      return;
+    }
+    setRoleDefs(prev => [...prev, { name: customRoleName.trim(), description: customRoleDesc.trim() }]);
+    setCustomRoleName("");
+    setCustomRoleDesc("");
+  };
+
+  const handleDeleteRoleDef = (name) => {
+    if (!confirm(`Delete the "${name}" role definition? This won't remove it from existing event requirements.`)) return;
+    setRoleDefs(prev => prev.filter(d => d.name !== name));
+  };
+
+  const handleStartEditDef = (def) => {
+    setEditingDef(def.name);
+    setEditDefName(def.name);
+    setEditDefDesc(def.description);
+  };
+
+  const handleSaveEditDef = (originalName) => {
+    if (!editDefName.trim()) return;
+    if (editDefName.trim() !== originalName && roleDefs.some(d => d.name.toLowerCase() === editDefName.trim().toLowerCase())) {
+      alert("A role with this name already exists");
+      return;
+    }
+    setRoleDefs(prev => prev.map(d => d.name === originalName ? { name: editDefName.trim(), description: editDefDesc.trim() } : d));
+    setEditingDef(null);
+  };
+
+  // --- Event Role Requirement CRUD ---
   const handleAddRole = async () => {
-    if (!selectedEvent) {
-      alert("Please select an event first");
-      return;
-    }
-    if (!newRole.role_name || newRole.quantity_needed <= 0) {
-      alert("Please provide a role name and quantity");
-      return;
-    }
+    if (!selectedEvent) { alert("Please select an event first"); return; }
+    if (!newRole.role_name || newRole.quantity_needed <= 0) { alert("Please provide a role name and quantity"); return; }
     const { error } = await supabase.from("role_requirements").insert({
       event_id: selectedEvent,
       role_name: newRole.role_name,
       qty_needed: newRole.quantity_needed,
       date: new Date().toISOString().split("T")[0],
     });
-    if (error) {
-      console.error("Failed to add role:", error);
-      alert("Failed to add role: " + (error.message || "Unknown error"));
-      return;
-    }
-    setNewRole({ role_name: "Sales Lead", quantity_needed: 1 });
+    if (error) { alert("Failed to add role: " + (error.message || "Unknown error")); return; }
+    setNewRole({ role_name: roleDefs[0]?.name || "", quantity_needed: 1 });
     setShowAddRole(false);
     if (onRefresh) await onRefresh();
   };
 
   const handleRemoveRole = async (id) => {
-    const { error } = await supabase.from("role_requirements").delete().eq("id", id);
-    if (error) {
-      console.error("Failed to remove role:", error);
-      return;
-    }
+    if (!confirm("Remove this role requirement?")) return;
+    await supabase.from("role_requirements").delete().eq("id", id);
+    if (onRefresh) await onRefresh();
+  };
+
+  const handleStartEdit = (role) => {
+    setEditingRole(role.id);
+    setEditForm({ role_name: role.role_name, qty_needed: role.qty_needed });
+  };
+
+  const handleSaveEdit = async (id) => {
+    if (!editForm.role_name || editForm.qty_needed <= 0) return;
+    await supabase.from("role_requirements").update({
+      role_name: editForm.role_name,
+      qty_needed: editForm.qty_needed,
+    }).eq("id", id);
+    setEditingRole(null);
     if (onRefresh) await onRefresh();
   };
 
@@ -2196,10 +2254,82 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>
-        Role Requirements
-      </h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Role Requirements</h1>
+        <Btn icon={Settings} variant="ghost" size="sm" onClick={() => setShowRoleManager(!showRoleManager)}>
+          {showRoleManager ? "Close" : "Manage Roles"}
+        </Btn>
+      </div>
 
+      {/* ========== ROLE DEFINITIONS MANAGER ========== */}
+      {showRoleManager && (
+        <SectionCard title="Role Definitions" icon={Settings}>
+          <p className="text-xs mb-3" style={{ color: "rgba(224,230,255,0.5)" }}>
+            Create, edit, or delete role types. These appear in the dropdown when adding roles to events. Descriptions help staff understand what each role involves.
+          </p>
+          <div className="space-y-2">
+            {roleDefs.map((def) => (
+              <div key={def.name} className="p-3 rounded-lg" style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
+                {editingDef === def.name ? (
+                  <div className="space-y-2">
+                    <Input label="Role Name" value={editDefName} onChange={(e) => setEditDefName(e.target.value)} />
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: "rgba(224,230,255,0.7)" }}>Description</label>
+                      <textarea
+                        value={editDefDesc}
+                        onChange={(e) => setEditDefDesc(e.target.value)}
+                        rows={2}
+                        className="w-full rounded-lg px-3 py-2 text-sm"
+                        style={{ background: "rgba(255,255,255,0.08)", border: `1px solid ${BRAND.glassBorder}`, color: BRAND.text, resize: "vertical" }}
+                        placeholder="What does this role do?"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Btn variant="primary" size="sm" onClick={() => handleSaveEditDef(def.name)}>Save</Btn>
+                      <Btn variant="secondary" size="sm" onClick={() => setEditingDef(null)}>Cancel</Btn>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm" style={{ color: BRAND.text }}>{def.name}</p>
+                      {def.description && (
+                        <p className="text-xs mt-0.5" style={{ color: "rgba(224,230,255,0.5)" }}>{def.description}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <Btn icon={Edit2} size="sm" variant="ghost" onClick={() => handleStartEditDef(def)} />
+                      <Btn icon={Trash2} size="sm" variant="danger" onClick={() => handleDeleteRoleDef(def.name)} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Add new role definition */}
+          <div className="mt-3 p-3 rounded-lg space-y-2" style={{ background: "rgba(84,205,249,0.05)", border: `1px dashed ${BRAND.primary}40` }}>
+            <p className="text-xs font-medium" style={{ color: BRAND.primary }}>Add Custom Role</p>
+            <Input label="Role Name" value={customRoleName} onChange={(e) => setCustomRoleName(e.target.value)} placeholder="e.g. Brand Ambassador" />
+            <div>
+              <label className="block text-xs font-medium mb-1" style={{ color: "rgba(224,230,255,0.7)" }}>Description</label>
+              <textarea
+                value={customRoleDesc}
+                onChange={(e) => setCustomRoleDesc(e.target.value)}
+                rows={2}
+                className="w-full rounded-lg px-3 py-2 text-sm"
+                style={{ background: "rgba(255,255,255,0.08)", border: `1px solid ${BRAND.glassBorder}`, color: BRAND.text, resize: "vertical" }}
+                placeholder="Describe what this role does at events..."
+              />
+            </div>
+            <Btn icon={Plus} variant="primary" size="sm" onClick={handleAddRoleDef} disabled={!customRoleName.trim()}>
+              Add Role Type
+            </Btn>
+          </div>
+        </SectionCard>
+      )}
+
+      {/* ========== EVENT SELECTOR ========== */}
       <SectionCard title="Select Event" icon={Calendar}>
         <Select
           value={selectedEvent}
@@ -2212,27 +2342,14 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
         />
       </SectionCard>
 
+      {/* ========== STATS ========== */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <StatCard
-          icon={Users}
-          label="Total Roles"
-          value={roles.length}
-          color="primary"
-        />
-        <StatCard
-          icon={Briefcase}
-          label="Total Needed"
-          value={totalNeeded}
-          color="primary"
-        />
-        <StatCard
-          icon={AlertCircle}
-          label="Unfilled"
-          value={totalUnfilled}
-          color={totalUnfilled > 0 ? "danger" : "success"}
-        />
+        <StatCard icon={Users} label="Total Roles" value={roles.length} color="primary" />
+        <StatCard icon={Briefcase} label="Total Needed" value={totalNeeded} color="primary" />
+        <StatCard icon={AlertCircle} label="Unfilled" value={totalUnfilled} color={totalUnfilled > 0 ? "danger" : "success"} />
       </div>
 
+      {/* ========== ROLE BREAKDOWN ========== */}
       <SectionCard title="Role Breakdown" icon={Briefcase}>
         {roles.length === 0 ? (
           <EmptyState title="No roles defined" message="Add roles for this event using the form below" />
@@ -2241,46 +2358,49 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
             {roles.map((role) => {
               const roleShifts = eventShifts.filter(s => s.role === role.role_name);
               const filled = roleShifts.length;
-              const fillPercentage = role.qty_needed > 0 ? (filled / role.qty_needed) * 100 : 0;
-              const statusColor =
-                fillPercentage >= 80
-                  ? BRAND.success
-                  : fillPercentage >= 50
-                  ? BRAND.warning
-                  : BRAND.danger;
+              const fillPct = role.qty_needed > 0 ? (filled / role.qty_needed) * 100 : 0;
+              const statusColor = fillPct >= 80 ? BRAND.success : fillPct >= 50 ? BRAND.warning : BRAND.danger;
+              const desc = getRoleDesc(role.role_name);
+
+              if (editingRole === role.id) {
+                return (
+                  <div key={role.id} className="p-3 rounded-lg space-y-2" style={{ background: "rgba(84,205,249,0.08)", border: `1px solid ${BRAND.primary}40` }}>
+                    <Select
+                      label="Role"
+                      value={editForm.role_name}
+                      onChange={(e) => setEditForm({ ...editForm, role_name: e.target.value })}
+                      options={roleDefs.map((d) => ({ value: d.name, label: d.name }))}
+                    />
+                    <Input
+                      label="Quantity Needed"
+                      type="number"
+                      value={editForm.qty_needed}
+                      onChange={(e) => setEditForm({ ...editForm, qty_needed: parseInt(e.target.value) || 1 })}
+                      min="1"
+                    />
+                    <div className="flex gap-2">
+                      <Btn variant="primary" size="sm" onClick={() => handleSaveEdit(role.id)}>Save</Btn>
+                      <Btn variant="secondary" size="sm" onClick={() => setEditingRole(null)}>Cancel</Btn>
+                    </div>
+                  </div>
+                );
+              }
 
               return (
                 <div key={role.id} className="space-y-2 p-3 rounded-lg" style={{ background: "rgba(255,255,255,0.05)" }}>
                   <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium" style={{ color: BRAND.text }}>
-                        {role.role_name}
-                      </p>
-                      <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
-                        {filled}/{role.qty_needed} filled
-                      </p>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium" style={{ color: BRAND.text }}>{role.role_name}</p>
+                      {desc && <p className="text-xs mt-0.5" style={{ color: "rgba(224,230,255,0.45)" }}>{desc}</p>}
+                      <p className="text-xs mt-1" style={{ color: "rgba(224,230,255,0.6)" }}>{filled}/{role.qty_needed} filled</p>
                     </div>
-                    <Btn
-                      icon={Trash2}
-                      size="sm"
-                      variant="danger"
-                      onClick={() => handleRemoveRole(role.id)}
-                    >
-                      Remove
-                    </Btn>
+                    <div className="flex gap-1 shrink-0">
+                      <Btn icon={Edit2} size="sm" variant="ghost" onClick={() => handleStartEdit(role)} />
+                      <Btn icon={Trash2} size="sm" variant="danger" onClick={() => handleRemoveRole(role.id)} />
+                    </div>
                   </div>
-
-                  <div
-                    className="h-2 rounded-full overflow-hidden"
-                    style={{ background: "rgba(255,255,255,0.1)" }}
-                  >
-                    <div
-                      className="h-full transition-all"
-                      style={{
-                        width: `${fillPercentage}%`,
-                        background: statusColor,
-                      }}
-                    ></div>
+                  <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+                    <div className="h-full transition-all" style={{ width: `${fillPct}%`, background: statusColor }} />
                   </div>
                 </div>
               );
@@ -2288,50 +2408,36 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
           </div>
         )}
 
+        {/* ADD ROLE TO EVENT */}
         <div className="mt-4">
           {showAddRole && (
-            <div
-              className="p-4 rounded-lg space-y-3 mb-3"
-              style={{ background: "rgba(255,255,255,0.05)" }}
-            >
+            <div className="p-4 rounded-lg space-y-3 mb-3" style={{ background: "rgba(255,255,255,0.05)" }}>
               <Select
                 label="Role Name"
                 value={newRole.role_name}
                 onChange={(e) => setNewRole({ ...newRole, role_name: e.target.value })}
-                options={predefinedRoles.map((r) => ({
-                  value: r,
-                  label: r,
-                }))}
+                options={roleDefs.map((d) => ({ value: d.name, label: d.name }))}
               />
-
+              {newRole.role_name && getRoleDesc(newRole.role_name) && (
+                <p className="text-xs px-1" style={{ color: "rgba(224,230,255,0.45)" }}>
+                  {getRoleDesc(newRole.role_name)}
+                </p>
+              )}
               <Input
                 label="Quantity Needed"
                 type="number"
                 value={newRole.quantity_needed}
-                onChange={(e) =>
-                  setNewRole({ ...newRole, quantity_needed: parseInt(e.target.value) || 1 })
-                }
+                onChange={(e) => setNewRole({ ...newRole, quantity_needed: parseInt(e.target.value) || 1 })}
                 min="1"
               />
-
               <div className="flex gap-2">
-                <Btn onClick={handleAddRole} variant="primary" size="sm">
-                  Add Role
-                </Btn>
-                <Btn onClick={() => setShowAddRole(false)} variant="secondary" size="sm">
-                  Cancel
-                </Btn>
+                <Btn onClick={handleAddRole} variant="primary" size="sm">Add Role</Btn>
+                <Btn onClick={() => setShowAddRole(false)} variant="secondary" size="sm">Cancel</Btn>
               </div>
             </div>
           )}
-
           {!showAddRole && (
-            <Btn
-              icon={Plus}
-              onClick={() => setShowAddRole(true)}
-              variant="primary"
-              className="w-full"
-            >
+            <Btn icon={Plus} onClick={() => { setShowAddRole(true); setNewRole({ role_name: roleDefs[0]?.name || "", quantity_needed: 1 }); }} variant="primary" className="w-full">
               Add Role
             </Btn>
           )}
