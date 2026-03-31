@@ -1539,40 +1539,81 @@ const EventsManagementPage = ({ events = [], locations = [], venues = [], eventV
 // PAGES: CALENDAR VIEW
 // ============================================================================
 
-const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations = [], availability = {}, employeeSkills = [], skills = [] }) => {
+const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations = [], availability = {}, employeeSkills = [], skills = [], venues = [], eventVenues = [] }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState("month"); // month, week, day
   const [selectedDay, setSelectedDay] = useState(new Date());
-  const [selectedEvent, setSelectedEvent] = useState(null);
-  const [assignmentModalOpen, setAssignmentModalOpen] = useState(false);
-  const [selectedSlot, setSelectedSlot] = useState(null);
 
-  const getDaysInMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  };
+  const statusColors = { upcoming: BRAND.primary, active: BRAND.success, completed: "rgba(224,230,255,0.5)", cancelled: BRAND.danger };
+  const typeLabels = { festival: "Festival", concert: "Concert", market: "Market", pop_up: "Pop-Up", corporate: "Corporate", tournament: "Tournament", combine: "Combine", camp: "Camp", other: "Other" };
 
-  const getFirstDayOfMonth = (date) => {
-    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  };
+  const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  const getFirstDayOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
 
   const monthDays = Array.from({ length: getDaysInMonth(currentDate) }, (_, i) => i + 1);
   const firstDay = getFirstDayOfMonth(currentDate);
-  const emptyDays = Array.from({ length: firstDay }, (_, i) => null);
 
   const getEventsForDate = (date) => {
     const d = date.toISOString().split("T")[0];
     return events.filter((e) => d >= e.start_date && d <= e.end_date);
   };
 
-  const handlePrevMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
+  const getVenueNames = (eventId) => {
+    const venueIds = eventVenues.filter(ev => ev.event_id === eventId).map(ev => ev.venue_id);
+    return venues.filter(v => venueIds.includes(v.id)).map(v => v.name);
   };
 
-  const handleNextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
+  const getStaffCount = (eventId, dateStr) => {
+    return shifts.filter(s => s.event_id === eventId && s.shift_date === dateStr).length;
   };
+
+  const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1));
+  const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1));
 
   const monthName = currentDate.toLocaleString("en-US", { month: "long", year: "numeric" });
+
+  // Build calendar grid rows (weeks) for spanning bar calculations
+  const totalCells = firstDay + monthDays.length;
+  const totalRows = Math.ceil(totalCells / 7);
+
+  // Build list of events that appear this month with their day ranges
+  const monthStart = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}-01`;
+  const monthEnd = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}-${String(getDaysInMonth(currentDate)).padStart(2, "0")}`;
+
+  const monthEvents = events.filter(e => e.start_date <= monthEnd && e.end_date >= monthStart).sort((a, b) => a.start_date.localeCompare(b.start_date));
+
+  // For each event, calculate which grid cells it occupies
+  const getEventSpans = (event) => {
+    const spans = [];
+    const eStart = new Date(event.start_date + "T00:00:00");
+    const eEnd = new Date(event.end_date + "T00:00:00");
+    
+    for (let row = 0; row < totalRows; row++) {
+      const rowStartCell = row * 7;
+      const rowEndCell = rowStartCell + 6;
+      
+      // What calendar day does each cell represent?
+      const rowStartDay = rowStartCell - firstDay + 1;
+      const rowEndDay = rowEndCell - firstDay + 1;
+      
+      // Event day range in this month (1-based)
+      const eventStartDay = eStart.getFullYear() === currentDate.getFullYear() && eStart.getMonth() === currentDate.getMonth()
+        ? eStart.getDate() : 1;
+      const eventEndDay = eEnd.getFullYear() === currentDate.getFullYear() && eEnd.getMonth() === currentDate.getMonth()
+        ? eEnd.getDate() : getDaysInMonth(currentDate);
+      
+      // Does this event overlap with this row?
+      const overlapStart = Math.max(eventStartDay, rowStartDay);
+      const overlapEnd = Math.min(eventEndDay, rowEndDay);
+      
+      if (overlapStart <= overlapEnd && overlapStart >= 1 && overlapStart <= getDaysInMonth(currentDate)) {
+        const startCol = overlapStart - rowStartDay;
+        const endCol = overlapEnd - rowStartDay;
+        spans.push({ row, startCol, endCol, startDay: overlapStart, endDay: overlapEnd });
+      }
+    }
+    return spans;
+  };
 
   if (viewMode === "day") {
     const dayStr = selectedDay.toISOString().split("T")[0];
@@ -1597,14 +1638,24 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
             {dayEvents.length > 0 && (
               <SectionCard title={`Events (${dayEvents.length})`} icon={Calendar}>
                 <div className="space-y-2">
-                  {dayEvents.map(event => (
-                    <div key={event.id} className="p-3 rounded-lg" style={{ background: "rgba(84,205,249,0.15)", borderLeft: `4px solid ${BRAND.primary}` }}>
-                      <p className="font-medium text-sm" style={{ color: BRAND.text }}>{event.name}</p>
-                      <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
-                        {formatDate(event.start_date)} — {formatDate(event.end_date)} • {event.event_type || "event"}
-                      </p>
-                    </div>
-                  ))}
+                  {dayEvents.map(event => {
+                    const venueNames = getVenueNames(event.id);
+                    const staffCount = getStaffCount(event.id, dayStr);
+                    const color = statusColors[event.status] || BRAND.primary;
+                    return (
+                      <div key={event.id} className="p-3 rounded-lg" style={{ background: `${color}15`, borderLeft: `4px solid ${color}` }}>
+                        <div className="flex items-center justify-between">
+                          <p className="font-medium text-sm" style={{ color: BRAND.text }}>{event.name}</p>
+                          <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${color}20`, color }}>{typeLabels[event.event_type] || event.event_type}</span>
+                        </div>
+                        <p className="text-xs mt-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+                          {formatDate(event.start_date)} — {formatDate(event.end_date)}
+                          {venueNames.length > 0 && ` • ${venueNames.join(", ")}`}
+                          {staffCount > 0 && ` • ${staffCount} staff`}
+                        </p>
+                      </div>
+                    );
+                  })}
                 </div>
               </SectionCard>
             )}
@@ -1674,89 +1725,180 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
     );
   }
 
+  // ---- MONTH VIEW with spanning event bars ----
+  const rows = [];
+  for (let row = 0; row < totalRows; row++) {
+    const cells = [];
+    for (let col = 0; col < 7; col++) {
+      const cellIdx = row * 7 + col;
+      const dayNum = cellIdx - firstDay + 1;
+      if (dayNum < 1 || dayNum > getDaysInMonth(currentDate)) {
+        cells.push(null);
+      } else {
+        cells.push(dayNum);
+      }
+    }
+    rows.push(cells);
+  }
+
+  // Build event bars per row, stacking events to avoid overlaps
+  const eventBarsByRow = rows.map((_, rowIdx) => {
+    const barsInRow = [];
+    monthEvents.forEach(event => {
+      const spans = getEventSpans(event);
+      const span = spans.find(s => s.row === rowIdx);
+      if (span) {
+        barsInRow.push({ event, ...span });
+      }
+    });
+    return barsInRow;
+  });
+
+  // Calculate max stacked events in any row to size cells
+  const maxBarsPerRow = eventBarsByRow.map(bars => bars.length);
+  const maxBars = Math.max(...maxBarsPerRow, 0);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>
-          Calendar {monthName}
+          Calendar — {monthName}
         </h1>
         <div className="flex items-center gap-2">
-          <Btn icon={ChevronLeft} size="sm" variant="secondary" onClick={handlePrevMonth}>
-            Prev
-          </Btn>
-          <Btn icon={ChevronRight} size="sm" variant="secondary" onClick={handleNextMonth}>
-            Next
-          </Btn>
-          <Select
-            value={viewMode}
-            onChange={(e) => setViewMode(e.target.value)}
-            options={[
-              { value: "month", label: "Month" },
-              { value: "week", label: "Week" },
-            ]}
-          />
+          <Btn icon={ChevronLeft} size="sm" variant="secondary" onClick={handlePrevMonth}>Prev</Btn>
+          <Btn size="sm" variant="secondary" onClick={() => setCurrentDate(new Date())}>Today</Btn>
+          <Btn icon={ChevronRight} size="sm" variant="secondary" onClick={handleNextMonth}>Next</Btn>
         </div>
       </div>
 
-      <SectionCard title="Month View" icon={Grid}>
-        <div className="space-y-4">
-          <div className="grid grid-cols-7 gap-2">
-            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-              <div key={day} className="text-center text-sm font-medium" style={{ color: BRAND.primary }}>
-                {day}
-              </div>
-            ))}
+      {/* Legend */}
+      <div className="flex flex-wrap gap-4 px-1">
+        {Object.entries(statusColors).map(([status, color]) => (
+          <div key={status} className="flex items-center gap-2">
+            <div className="w-3 h-3 rounded-sm" style={{ background: color }} />
+            <span className="text-xs capitalize" style={{ color: "rgba(224,230,255,0.7)" }}>{status}</span>
           </div>
+        ))}
+      </div>
 
-          <div className="grid grid-cols-7 gap-2">
-            {emptyDays.map((_, idx) => (
-              <div key={`empty-${idx}`} className="aspect-square"></div>
-            ))}
-            {monthDays.map((day) => {
-              const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-              const dayEvents = getEventsForDate(date);
-
-              return (
-                <button
-                  key={day}
-                  onClick={() => {
-                    setSelectedDay(date);
-                    setViewMode("day");
-                  }}
-                  className="aspect-square p-2 rounded-lg text-left text-sm cursor-pointer transition hover:bg-white/10"
-                  style={{
-                    background:
-                      date.toDateString() === selectedDay.toDateString()
-                        ? `${BRAND.primary}20`
-                        : "rgba(255,255,255,0.05)",
-                    border: `1px solid ${BRAND.glassBorder}`,
-                  }}
-                >
-                  <div className="font-semibold" style={{ color: BRAND.text }}>
-                    {day}
-                  </div>
-                  {dayEvents.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {dayEvents.slice(0, 2).map((event) => (
-                        <div
-                          key={event.id}
-                          className="w-1 h-1 rounded-full"
-                          style={{ background: BRAND.primary }}
-                        ></div>
-                      ))}
-                      {dayEvents.length > 2 && (
-                        <span className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>
-                          +{dayEvents.length - 2}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+      <div className="rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${BRAND.glassBorder}` }}>
+        {/* Day headers */}
+        <div className="grid grid-cols-7">
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+            <div key={day} className="text-center text-xs font-semibold py-2 uppercase tracking-wider" style={{ color: BRAND.primary, borderBottom: `1px solid ${BRAND.glassBorder}` }}>
+              {day}
+            </div>
+          ))}
         </div>
-      </SectionCard>
+
+        {/* Calendar rows */}
+        {rows.map((week, rowIdx) => {
+          const barsInRow = eventBarsByRow[rowIdx];
+          const barHeight = 22;
+          const barGap = 2;
+          const barsAreaHeight = barsInRow.length > 0 ? barsInRow.length * (barHeight + barGap) + 4 : 0;
+          const minCellHeight = 80;
+          const cellHeight = Math.max(minCellHeight, 32 + barsAreaHeight);
+
+          return (
+            <div key={rowIdx} className="relative" style={{ minHeight: cellHeight }}>
+              {/* Day number row */}
+              <div className="grid grid-cols-7">
+                {week.map((dayNum, colIdx) => {
+                  const isToday = dayNum && new Date().getFullYear() === currentDate.getFullYear() && new Date().getMonth() === currentDate.getMonth() && new Date().getDate() === dayNum;
+                  return (
+                    <div
+                      key={colIdx}
+                      onClick={() => {
+                        if (dayNum) {
+                          setSelectedDay(new Date(currentDate.getFullYear(), currentDate.getMonth(), dayNum));
+                          setViewMode("day");
+                        }
+                      }}
+                      className={`cursor-pointer transition hover:bg-white/5`}
+                      style={{
+                        minHeight: cellHeight,
+                        borderRight: colIdx < 6 ? `1px solid rgba(255,255,255,0.04)` : "none",
+                        borderBottom: rowIdx < rows.length - 1 ? `1px solid rgba(255,255,255,0.04)` : "none",
+                        background: dayNum ? (isToday ? "rgba(84,205,249,0.08)" : "transparent") : "rgba(0,0,0,0.15)",
+                      }}
+                    >
+                      <div className="px-2 pt-1">
+                        {dayNum && (
+                          <span className={`text-xs font-semibold ${isToday ? "inline-flex items-center justify-center w-6 h-6 rounded-full" : ""}`}
+                            style={{
+                              color: isToday ? "#fff" : dayNum ? BRAND.text : "transparent",
+                              background: isToday ? BRAND.primary : "transparent",
+                            }}>
+                            {dayNum}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Event spanning bars overlay */}
+              {barsInRow.map((bar, barIdx) => {
+                const color = statusColors[bar.event.status] || BRAND.primary;
+                const venueNames = getVenueNames(bar.event.id);
+                const dayStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}-${String(bar.startDay).padStart(2, "0")}`;
+                const staffCount = getStaffCount(bar.event.id, dayStr);
+                const colWidth = 100 / 7;
+                const left = `${bar.startCol * colWidth}%`;
+                const width = `${(bar.endCol - bar.startCol + 1) * colWidth}%`;
+                const top = 28 + barIdx * (barHeight + barGap);
+                const isStart = bar.event.start_date >= monthStart ? (bar.startDay === new Date(bar.event.start_date + "T00:00:00").getDate()) : (bar.startCol === 0);
+                const isEnd = bar.event.end_date <= monthEnd ? (bar.endDay === new Date(bar.event.end_date + "T00:00:00").getDate()) : (bar.endCol === 6);
+
+                return (
+                  <div
+                    key={`${bar.event.id}-${rowIdx}`}
+                    className="absolute flex items-center gap-1 overflow-hidden cursor-pointer transition-opacity hover:opacity-90"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedDay(new Date(currentDate.getFullYear(), currentDate.getMonth(), bar.startDay));
+                      setViewMode("day");
+                    }}
+                    title={`${bar.event.name}${venueNames.length > 0 ? " — " + venueNames.join(", ") : ""}${staffCount > 0 ? " — " + staffCount + " staff" : ""}`}
+                    style={{
+                      position: "absolute",
+                      left,
+                      width,
+                      top,
+                      height: barHeight,
+                      background: `${color}30`,
+                      borderLeft: isStart ? `3px solid ${color}` : "none",
+                      borderRadius: `${isStart ? "4px" : "0"} ${isEnd ? "4px" : "0"} ${isEnd ? "4px" : "0"} ${isStart ? "4px" : "0"}`,
+                      paddingLeft: isStart ? 6 : 4,
+                      paddingRight: 4,
+                      zIndex: 10,
+                    }}
+                  >
+                    <span className="text-xs font-semibold truncate" style={{ color, lineHeight: `${barHeight}px` }}>
+                      {bar.event.name}
+                    </span>
+                    <span className="text-xs truncate flex-shrink-0 hidden sm:inline" style={{ color: `${color}99`, lineHeight: `${barHeight}px` }}>
+                      {typeLabels[bar.event.event_type] || ""}
+                    </span>
+                    {venueNames.length > 0 && (
+                      <span className="text-xs truncate hidden md:inline" style={{ color: "rgba(224,230,255,0.5)", lineHeight: `${barHeight}px` }}>
+                        📍{venueNames[0]}
+                      </span>
+                    )}
+                    {staffCount > 0 && (
+                      <span className="text-xs flex-shrink-0 hidden lg:inline" style={{ color: "rgba(224,230,255,0.5)", lineHeight: `${barHeight}px` }}>
+                        👥{staffCount}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
@@ -5711,7 +5853,7 @@ export default function App() {
     const pageContent = {
       dashboard: <DashboardPage employees={employees} events={events} locations={locations} shifts={shifts} availability={availability} products={products} stock={stock} historicSales={historicSales} />,
       "events-manager": <EventsManagementPage events={events} locations={locations} venues={venues} eventVenues={eventVenues} onRefresh={loadData} />,
-      "calendar-view": <CalendarViewPage events={events} employees={employees} shifts={shifts} locations={locations} availability={availability} employeeSkills={employeeSkills} skills={skills} />,
+      "calendar-view": <CalendarViewPage events={events} employees={employees} shifts={shifts} locations={locations} availability={availability} employeeSkills={employeeSkills} skills={skills} venues={venues} eventVenues={eventVenues} />,
       "shift-builder": <ShiftBuilderPage events={events} employees={employees} shifts={shifts} locations={locations} roleRequirements={roleRequirements} onRefresh={loadData} />,
       "role-requirements": <RoleRequirementsPage events={events} shifts={shifts} locations={locations} employees={employees} roleRequirements={roleRequirements} onRefresh={loadData} />,
       directory: <DirectoryPage employees={employees} employeeSkills={employeeSkills} skills={skills} />,
