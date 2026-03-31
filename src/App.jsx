@@ -1243,6 +1243,19 @@ const EventsManagementPage = ({ events = [], locations = [], venues = [], eventV
         await supabase.from("event_venues").insert(toAdd.map(vid => ({ event_id: eventId, venue_id: vid })));
       }
     }
+    // Notify all staff to submit availability when a NEW event is created
+    if (!editEvent && eventId) {
+      const startLabel = new Date(eventForm.start_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const endLabel = new Date(eventForm.end_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const dateRange = eventForm.start_date === eventForm.end_date ? startLabel : `${startLabel} – ${endLabel}`;
+      await supabase.from("notifications").insert({
+        type: "general",
+        message: `New event added: ${eventForm.name} (${dateRange}). Please submit your availability.`,
+        event_id: eventId,
+        status: "sent",
+        sent_at: new Date().toISOString(),
+      });
+    }
     setSaving(false);
     setShowEventModal(false);
     setEditEvent(null);
@@ -2619,14 +2632,12 @@ const SkillsTagsPage = ({ employees = [], skills = [], employeeSkills = [], onRe
 // PAGES: AVAILABILITY
 // ============================================================================
 
-const AvailabilityPage = ({ employees = [], events = [], availability: parentAvailability = {}, onRefresh, user, currentRole }) => {
+const AvailabilityPage = ({ employees = [], events = [], availability: parentAvailability = {}, onRefresh, user, currentRole, venues = [], eventVenues = [] }) => {
   const [selectedEmployee, setSelectedEmployee] = useState("");
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [weekSlots, setWeekSlots] = useState({});
+  const [availSlots, setAvailSlots] = useState({});
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
 
-  // Find the logged-in user's employee record
   const currentEmployee = useMemo(
     () => employees.find((e) => e.email === user?.email),
     [employees, user]
@@ -2634,7 +2645,6 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
 
   const isEmployeeOnly = currentRole === "employee";
 
-  // Auto-select: employees locked to self, admins default to first
   useEffect(() => {
     if (isEmployeeOnly && currentEmployee) {
       setSelectedEmployee(currentEmployee.id);
@@ -2643,33 +2653,45 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
     }
   }, [employees, currentEmployee, isEmployeeOnly]);
 
-  // Compute the 7 days of the current week view
-  const weekDays = useMemo(() => {
-    const today = new Date();
-    const dayOfWeek = today.getDay();
-    const monday = new Date(today);
-    monday.setDate(today.getDate() - ((dayOfWeek + 6) % 7) + weekOffset * 7);
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(monday);
-      d.setDate(monday.getDate() + i);
-      return d;
+  const formatDate = (d) => typeof d === "string" ? d : d.toISOString().split("T")[0];
+  const today = formatDate(new Date());
+
+  // Get upcoming/active events sorted by start date
+  const upcomingEvents = useMemo(() => {
+    return events
+      .filter(e => e.end_date >= today && e.status !== "cancelled")
+      .sort((a, b) => a.start_date.localeCompare(b.start_date));
+  }, [events, today]);
+
+  // Build all unique dates from upcoming events
+  const eventDateMap = useMemo(() => {
+    const dateMap = {}; // date -> [{ event, venues }]
+    upcomingEvents.forEach(evt => {
+      const start = new Date(evt.start_date + "T00:00:00");
+      const end = new Date(evt.end_date + "T00:00:00");
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const key = formatDate(d);
+        if (!dateMap[key]) dateMap[key] = [];
+        const evtVenueIds = eventVenues.filter(ev => ev.event_id === evt.id).map(ev => ev.venue_id);
+        const evtVenues = venues.filter(v => evtVenueIds.includes(v.id));
+        dateMap[key].push({ event: evt, venues: evtVenues });
+      }
     });
-  }, [weekOffset]);
+    return dateMap;
+  }, [upcomingEvents, venues, eventVenues]);
 
-  const formatDate = (d) => d.toISOString().split("T")[0];
-  const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const sortedDates = useMemo(() => Object.keys(eventDateMap).sort(), [eventDateMap]);
 
-  // Build weekSlots from parentAvailability when employee or week changes
+  // Load availability slots when employee changes
   useEffect(() => {
     if (!selectedEmployee) return;
     const empAvail = parentAvailability[selectedEmployee] || {};
     const slots = {};
-    weekDays.forEach((d) => {
-      const key = formatDate(d);
+    sortedDates.forEach(key => {
       slots[key] = empAvail[key] || "available";
     });
-    setWeekSlots(slots);
-  }, [selectedEmployee, weekDays, parentAvailability]);
+    setAvailSlots(slots);
+  }, [selectedEmployee, sortedDates, parentAvailability]);
 
   const statusColors = {
     available: { bg: "rgba(74,222,128,0.2)", color: "#4ade80", label: "Available" },
@@ -2679,7 +2701,7 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
   const statusCycle = ["available", "tentative", "unavailable"];
 
   const cycleStatus = (dateKey) => {
-    setWeekSlots((prev) => {
+    setAvailSlots((prev) => {
       const current = prev[dateKey] || "available";
       const nextIdx = (statusCycle.indexOf(current) + 1) % statusCycle.length;
       return { ...prev, [dateKey]: statusCycle[nextIdx] };
@@ -2690,7 +2712,6 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
     if (!selectedEmployee) return;
     setSaving(true);
     setSaveMsg(null);
-
     try {
       let token = null;
       try {
@@ -2700,19 +2721,15 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
           token = stored?.access_token || null;
         }
       } catch (e) { /* ignore */ }
-
       if (!token) {
         setSaveMsg({ type: "error", text: "Session expired — please log in again." });
         return;
       }
-
-      // Build upsert rows for the week
-      const rows = Object.entries(weekSlots).map(([date, status]) => ({
+      const rows = Object.entries(availSlots).map(([date, status]) => ({
         employee_id: selectedEmployee,
         avail_date: date,
         status,
       }));
-
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/employee_availability`,
         {
@@ -2726,27 +2743,43 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
           body: JSON.stringify(rows),
         }
       );
-
       if (!res.ok) {
         const errText = await res.text();
-        console.error("Failed to save availability:", errText);
         setSaveMsg({ type: "error", text: "Failed to save: " + errText });
         return;
       }
-
       setSaveMsg({ type: "success", text: "Availability saved!" });
       if (onRefresh) await onRefresh();
     } catch (err) {
-      console.error("Save error:", err);
       setSaveMsg({ type: "error", text: "Failed to save: " + (err.message || "Unknown error") });
     } finally {
       setSaving(false);
     }
   };
 
-  const weekLabel = weekDays.length > 0
-    ? `${weekDays[0].toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekDays[6].toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
-    : "";
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  // Group dates by event for a cleaner view
+  const eventGroups = useMemo(() => {
+    const groups = [];
+    const seen = new Set();
+    upcomingEvents.forEach(evt => {
+      if (seen.has(evt.id)) return;
+      seen.add(evt.id);
+      const start = new Date(evt.start_date + "T00:00:00");
+      const end = new Date(evt.end_date + "T00:00:00");
+      const dates = [];
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        dates.push(formatDate(d));
+      }
+      const evtVenueIds = eventVenues.filter(ev => ev.event_id === evt.id).map(ev => ev.venue_id);
+      const evtVenues = venues.filter(v => evtVenueIds.includes(v.id));
+      groups.push({ event: evt, dates, venues: evtVenues });
+    });
+    return groups;
+  }, [upcomingEvents, venues, eventVenues]);
+
+  const typeColors = { festival: "#a78bfa", concert: "#f472b6", market: "#34d399", corporate: "#60a5fa", sports: "#fbbf24", other: "#94a3b8" };
 
   return (
     <div className="space-y-4">
@@ -2776,78 +2809,100 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
         )}
       </SectionCard>
 
-      <SectionCard title="Weekly Schedule" icon={Calendar}>
-        {/* Week navigation */}
-        <div className="flex items-center justify-between mb-4">
-          <Btn variant="ghost" size="sm" onClick={() => setWeekOffset((w) => w - 1)}>← Prev</Btn>
-          <span className="text-sm font-medium" style={{ color: BRAND.text }}>{weekLabel}</span>
-          <Btn variant="ghost" size="sm" onClick={() => setWeekOffset((w) => w + 1)}>Next →</Btn>
-        </div>
-
-        {/* Tap-to-cycle legend */}
-        <div className="flex gap-3 mb-4 flex-wrap">
-          {statusCycle.map((s) => (
-            <div key={s} className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full" style={{ background: statusColors[s].color }} />
-              <span className="text-xs" style={{ color: "rgba(224,230,255,0.7)" }}>{statusColors[s].label}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Day slots */}
-        <div className="space-y-2">
-          {weekDays.map((d, idx) => {
-            const key = formatDate(d);
-            const status = weekSlots[key] || "available";
-            const sc = statusColors[status];
-            const isToday = formatDate(d) === formatDate(new Date());
-            return (
-              <div
-                key={key}
-                onClick={() => cycleStatus(key)}
-                className="flex items-center justify-between p-4 rounded-lg cursor-pointer transition-all active:scale-[0.98]"
-                style={{
-                  background: sc.bg,
-                  border: isToday ? `2px solid ${BRAND.primary}` : "2px solid transparent",
-                  minHeight: 56,
-                }}
-              >
-                <div>
-                  <span className="text-sm font-semibold" style={{ color: BRAND.text }}>
-                    {dayNames[idx]}
-                  </span>
-                  <span className="text-xs ml-2" style={{ color: "rgba(224,230,255,0.5)" }}>
-                    {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                  </span>
-                  {isToday && (
-                    <span className="text-xs ml-2 px-1.5 py-0.5 rounded" style={{ background: `${BRAND.primary}30`, color: BRAND.primary }}>Today</span>
-                  )}
-                </div>
-                <span className="text-xs font-semibold px-3 py-1 rounded-full" style={{ background: sc.bg, color: sc.color }}>
-                  {sc.label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-
-        <p className="text-xs mt-2" style={{ color: "rgba(224,230,255,0.4)" }}>
-          Tap a day to cycle: Available → Tentative → Unavailable
-        </p>
-
-        {saveMsg && (
-          <div className="mt-3 p-3 rounded-lg text-sm" style={{
-            background: saveMsg.type === "success" ? "rgba(74,222,128,0.15)" : "rgba(244,67,54,0.15)",
-            color: saveMsg.type === "success" ? "#4ade80" : "#ef4444",
-          }}>
-            {saveMsg.text}
+      {/* Legend */}
+      <div className="flex gap-3 flex-wrap px-1">
+        {statusCycle.map((s) => (
+          <div key={s} className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-full" style={{ background: statusColors[s].color }} />
+            <span className="text-xs" style={{ color: "rgba(224,230,255,0.7)" }}>{statusColors[s].label}</span>
           </div>
-        )}
+        ))}
+        <span className="text-xs ml-auto" style={{ color: "rgba(224,230,255,0.4)" }}>Tap a date to cycle status</span>
+      </div>
 
-        <Btn variant="primary" className="w-full mt-4" onClick={handleSave} disabled={saving || !selectedEmployee}>
-          {saving ? "Saving..." : "Save Availability"}
-        </Btn>
-      </SectionCard>
+      {eventGroups.length === 0 ? (
+        <SectionCard title="No Upcoming Events" icon={Calendar}>
+          <div className="text-center py-8">
+            <Calendar size={40} style={{ color: "rgba(224,230,255,0.3)", margin: "0 auto 12px" }} />
+            <p className="text-sm" style={{ color: "rgba(224,230,255,0.5)" }}>
+              No upcoming events in the system. Availability collection will open when events are added.
+            </p>
+          </div>
+        </SectionCard>
+      ) : (
+        eventGroups.map(({ event: evt, dates, venues: evtVenues }) => (
+          <SectionCard key={evt.id} title={evt.name} icon={Calendar}>
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{
+                background: `${typeColors[evt.event_type] || typeColors.other}25`,
+                color: typeColors[evt.event_type] || typeColors.other,
+              }}>
+                {(evt.event_type || "event").charAt(0).toUpperCase() + (evt.event_type || "event").slice(1)}
+              </span>
+              <span className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>
+                {new Date(evt.start_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                {evt.start_date !== evt.end_date && ` – ${new Date(evt.end_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
+              </span>
+              {evtVenues.length > 0 && (
+                <span className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>
+                  📍 {evtVenues.map(v => v.name).join(", ")}
+                </span>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              {dates.map(dateKey => {
+                const d = new Date(dateKey + "T00:00:00");
+                const status = availSlots[dateKey] || "available";
+                const sc = statusColors[status];
+                const isToday = dateKey === today;
+                return (
+                  <div
+                    key={dateKey}
+                    onClick={() => cycleStatus(dateKey)}
+                    className="flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all active:scale-[0.98]"
+                    style={{
+                      background: sc.bg,
+                      border: isToday ? `2px solid ${BRAND.primary}` : "2px solid transparent",
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold" style={{ color: BRAND.text }}>
+                        {dayNames[d.getDay()]}
+                      </span>
+                      <span className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>
+                        {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </span>
+                      {isToday && (
+                        <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: `${BRAND.primary}30`, color: BRAND.primary }}>Today</span>
+                      )}
+                    </div>
+                    <span className="text-xs font-semibold px-3 py-1 rounded-full" style={{ background: sc.bg, color: sc.color }}>
+                      {sc.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </SectionCard>
+        ))
+      )}
+
+      {eventGroups.length > 0 && (
+        <div className="space-y-3">
+          {saveMsg && (
+            <div className="p-3 rounded-lg text-sm" style={{
+              background: saveMsg.type === "success" ? "rgba(74,222,128,0.15)" : "rgba(244,67,54,0.15)",
+              color: saveMsg.type === "success" ? "#4ade80" : "#ef4444",
+            }}>
+              {saveMsg.text}
+            </div>
+          )}
+          <Btn variant="primary" className="w-full" onClick={handleSave} disabled={saving || !selectedEmployee}>
+            {saving ? "Saving..." : "Save Availability"}
+          </Btn>
+        </div>
+      )}
     </div>
   );
 };
@@ -5858,7 +5913,7 @@ export default function App() {
       "role-requirements": <RoleRequirementsPage events={events} shifts={shifts} locations={locations} employees={employees} roleRequirements={roleRequirements} onRefresh={loadData} />,
       directory: <DirectoryPage employees={employees} employeeSkills={employeeSkills} skills={skills} />,
       "skills-tags": <SkillsTagsPage employees={employees} skills={skills} employeeSkills={employeeSkills} onRefresh={loadData} />,
-      availability: <AvailabilityPage employees={employees} events={events} availability={availability} onRefresh={loadData} user={user} currentRole={currentRole} />,
+      availability: <AvailabilityPage employees={employees} events={events} availability={availability} onRefresh={loadData} user={user} currentRole={currentRole} venues={venues} eventVenues={eventVenues} />,
       "my-shifts": <MyShiftsPage employees={employees} events={events} shifts={shifts} user={user} locations={locations} />,
       payroll: <PayrollPage employees={employees} events={events} locations={locations} shifts={shifts} />,
       products: <InventoryProductsPage products={products} stock={stock} onRefresh={loadData} />,
