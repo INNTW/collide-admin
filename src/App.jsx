@@ -5632,11 +5632,16 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showSetPassword, setShowSetPassword] = useState(false);
+  const [isInviteFlow, setIsInviteFlow] = useState(() => {
+    const hash = window.location.hash;
+    return hash.includes("access_token") && (hash.includes("type=invite") || hash.includes("type=recovery") || hash.includes("type=magiclink"));
+  });
 
   // Navigation State
   const [currentNav, setCurrentNav] = useState(() => {
     const hash = window.location.hash.replace('#/', '');
-    if (hash) {
+    if (hash && !hash.includes("access_token")) {
       for (const section of NAV_TREE.sections) {
         if (section.id === hash) return { section: hash, page: null };
         const child = section.children?.find(c => c.page === hash);
@@ -5765,8 +5770,17 @@ export default function App() {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         setUser(session.user);
-        if (event === "SIGNED_IN") {
-          await loadData();
+        if (event === "PASSWORD_RECOVERY") {
+          setShowSetPassword(true);
+          window.location.hash = "#/dashboard";
+        } else if (event === "SIGNED_IN" || event === "INITIAL_SESSION") {
+          if (isInviteFlow) {
+            setShowSetPassword(true);
+            setIsInviteFlow(false);
+            window.location.hash = "#/dashboard";
+          } else if (!showSetPassword) {
+            await loadData();
+          }
         }
       } else {
         setUser(null);
@@ -6063,6 +6077,61 @@ export default function App() {
   }
 
   // Login state
+  // ========== SET PASSWORD SCREEN (invited users / password recovery) ==========
+  const SetPasswordScreen = () => {
+    const [newPwd, setNewPwd] = useState("");
+    const [confirmPwd, setConfirmPwd] = useState("");
+    const [pwdSaving, setPwdSaving] = useState(false);
+    const [pwdError, setPwdError] = useState("");
+    const [pwdSuccess, setPwdSuccess] = useState(false);
+
+    const handleSetPassword = async (e) => {
+      e.preventDefault();
+      if (newPwd.length < 6) { setPwdError("Password must be at least 6 characters"); return; }
+      if (newPwd !== confirmPwd) { setPwdError("Passwords don't match"); return; }
+      setPwdSaving(true);
+      setPwdError("");
+      try {
+        const { error: updateError } = await supabase.auth.updateUser({ password: newPwd });
+        if (updateError) throw updateError;
+        setPwdSuccess(true);
+        setTimeout(() => { setShowSetPassword(false); loadData(); }, 1500);
+      } catch (err) {
+        setPwdError(err.message || "Failed to set password");
+      } finally { setPwdSaving(false); }
+    };
+
+    return (
+      <div className="flex items-center justify-center p-4" style={{ background: BRAND.gradient, height: "100dvh", minHeight: "-webkit-fill-available" }}>
+        <div className="w-full max-w-md p-8 rounded-2xl" style={{ background: BRAND.glass, border: `1px solid ${BRAND.glassBorder}`, backdropFilter: BRAND.blur }}>
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold mb-2" style={{ color: BRAND.primary }}>Collide</h1>
+            <p className="text-sm" style={{ color: "rgba(224,230,255,0.7)" }}>Welcome! Set your password to get started.</p>
+          </div>
+          {pwdSuccess ? (
+            <div className="p-4 rounded-lg text-center" style={{ background: "rgba(74,222,128,0.15)", color: "#4ade80" }}>
+              <p className="font-medium">Password set successfully!</p>
+              <p className="text-sm mt-1">Redirecting to your dashboard...</p>
+            </div>
+          ) : (
+            <form onSubmit={handleSetPassword} className="space-y-4">
+              <Input label="New Password" type="password" value={newPwd} onChange={(e) => setNewPwd(e.target.value)} placeholder="Min 6 characters" />
+              <Input label="Confirm Password" type="password" value={confirmPwd} onChange={(e) => setConfirmPwd(e.target.value)} placeholder="Re-enter password" />
+              {pwdError && (
+                <div className="p-3 rounded-lg text-sm" style={{ background: "rgba(244,67,54,0.2)", color: BRAND.danger }}>{pwdError}</div>
+              )}
+              <Btn type="submit" disabled={pwdSaving} className="w-full">
+                {pwdSaving ? "Setting Password..." : "Set Password & Continue"}
+              </Btn>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  if (showSetPassword && user) return <SetPasswordScreen />;
+
   if (!user) {
     return <LoginPage onLoginSuccess={setUser} />;
   }
