@@ -79,16 +79,29 @@ import { supabase } from "./lib/supabase";
 // ============================================================================
 
 const BRAND = {
-  gradient: "linear-gradient(135deg, #001F3F 0%, #003366 40%, #001a33 70%, #000d1a 100%)",
-  navy: "#001F3F",
-  primary: "#54CDF9",
-  glass: "rgba(255,255,255,0.08)",
-  glassBorder: "rgba(255,255,255,0.15)",
+  // Brand guideline colors
+  navy: "#00396b",         // Main Navy Blue
+  lightBlue: "#669ae4",    // Light Blue
+  primary: "#54cdf9",      // Bright Blue (accent)
+  accentBlue: "#cfe2f3",   // Accent Blue (subtle backgrounds)
+  black: "#000000",
+  white: "#ffffff",
+  // App theme (white background mode)
+  gradient: "#ffffff",     // White background
+  glass: "rgba(0,57,107,0.06)",         // Navy tinted glass
+  glassBorder: "rgba(0,57,107,0.12)",   // Navy tinted border
   blur: "blur(16px)",
   success: "#4CAF50",
   warning: "#FF9800",
   danger: "#F44336",
-  text: "#E0E6FF",
+  text: "#00396b",         // Navy text on white
+  textMuted: "#669ae4",    // Light blue for muted text
+  textLight: "rgba(0,57,107,0.55)", // Faded navy
+  // Floating nav
+  navBg: "#00396b",        // Navy pill buttons
+  navText: "#ffffff",      // White text on nav
+  navActive: "#54cdf9",    // Bright blue active state
+  navHover: "#669ae4",     // Light blue hover
 };
 
 // ============================================================
@@ -163,87 +176,64 @@ const TAX_CONFIG_2026 = {
 // Navigation tree structure
 // Role hierarchy: admin > team_lead > employee
 // Each nav item specifies which roles can see it
+// Main sidebar nav — clean icon+text buttons, no nested dropdowns
+const NAV_SIDEBAR = [
+  { id: "dashboard", label: "Dashboard", icon: Home, page: null, roles: ["admin", "team_lead", "employee"] },
+  {
+    id: "scheduling", label: "Staffing", icon: Calendar, roles: ["admin", "team_lead", "employee"],
+    flyout: [
+      { id: "staffing-dashboard", label: "Dashboard", page: "staffing-dashboard", roles: ["admin", "team_lead", "employee"] },
+      { id: "scheduling", label: "Scheduling", page: "scheduling-cal", roles: ["admin", "team_lead", "employee"] },
+      { id: "assignment", label: "Assignment", page: "assignment", roles: ["admin", "team_lead"] },
+      { id: "staffing-analytics", label: "Staffing Analytics", page: "staffing-analytics", roles: ["admin"] },
+    ],
+  },
+  { id: "employees", label: "Employees", icon: Users, page: "employees-dash", roles: ["admin", "team_lead"] },
+  {
+    id: "inventory", label: "Inventory", icon: Package, roles: ["admin", "team_lead"],
+    flyout: [
+      { id: "inv-dashboard", label: "Dashboard", page: "inv-dashboard", roles: ["admin", "team_lead"] },
+      { id: "products", label: "Products", page: "products", roles: ["admin", "team_lead"] },
+      { id: "inv-analytics", label: "Analytics", page: "inv-analytics", roles: ["admin"] },
+      { id: "inv-projections", label: "Projections", page: "inv-projections", roles: ["admin"] },
+    ],
+  },
+  { id: "analytics", label: "Analytics", icon: BarChart3, page: "analytics", roles: ["admin", "team_lead"] },
+];
+
+// User account menu items (top-right avatar dropdown)
+const USER_MENU_ITEMS = [
+  { id: "my-shifts", label: "My Shifts", icon: Calendar, page: "my-shifts", roles: ["admin", "team_lead", "employee"] },
+  { id: "notifications", label: "Notifications", icon: Bell, page: "notifications", roles: ["admin", "team_lead", "employee"] },
+  { id: "my-pay", label: "My Pay Stubs", icon: DollarSign, page: "payroll", roles: ["admin"] },
+  { id: "settings", label: "Settings", icon: Settings, page: "settings", roles: ["admin"] },
+];
+
+// Legacy NAV_TREE kept for hasPageAccess checks
 const NAV_TREE = {
   sections: [
-    {
-      id: "dashboard",
-      label: "Dashboard",
-      icon: Home,
-      page: null,
-      roles: ["admin", "team_lead", "employee"],
-    },
-    {
-      id: "scheduling",
-      label: "Scheduling",
-      icon: Calendar,
-      roles: ["admin", "team_lead", "employee"],
-      children: [
-        { id: "events-manager", label: "Events Manager", page: "events-manager", roles: ["admin", "team_lead"] },
-        { id: "calendar", label: "Calendar View", page: "calendar-view", roles: ["admin", "team_lead"] },
-        { id: "shift-builder", label: "Shift Builder", page: "shift-builder", roles: ["admin", "team_lead"] },
-        { id: "role-requirements", label: "Role Requirements", page: "role-requirements", roles: ["admin", "team_lead"] },
-        { id: "availability", label: "Availability", page: "availability", roles: ["admin", "team_lead", "employee"] },
-        { id: "my-shifts", label: "My Shifts", page: "my-shifts", roles: ["admin", "team_lead", "employee"] },
-      ],
-    },
-    {
-      id: "employees",
-      label: "Employees",
-      icon: Users,
-      roles: ["admin", "team_lead"],
-      children: [
-        { id: "directory", label: "Directory", page: "directory", roles: ["admin", "team_lead"] },
-        { id: "skills-tags", label: "Skills & Tags", page: "skills-tags", roles: ["admin", "team_lead"] },
-        { id: "payroll", label: "Payroll & T4", page: "payroll", roles: ["admin"] },
-      ],
-    },
-    {
-      id: "inventory",
-      label: "Inventory",
-      icon: Package,
-      roles: ["admin", "team_lead"],
-      children: [
-        { id: "products", label: "Products", page: "products", roles: ["admin", "team_lead"] },
-        { id: "stock", label: "Stock & Distribution", page: "stock", roles: ["admin", "team_lead"] },
-        { id: "inv-analytics", label: "Analytics", page: "inv-analytics", roles: ["admin"] },
-        { id: "inv-projections", label: "Projections", page: "inv-projections", roles: ["admin"] },
-      ],
-    },
-    {
-      id: "projections",
-      label: "Projections",
-      icon: TrendingUp,
-      roles: ["admin"],
-      children: [
-        { id: "sales-projections", label: "Sales Forecast", page: "sales-projections", roles: ["admin"] },
-        { id: "staffing-projections", label: "Staffing Needs", page: "staffing-projections", roles: ["admin"] },
-        { id: "event-pnl", label: "Event P&L", page: "event-pnl", roles: ["admin"] },
-      ],
-    },
-    {
-      id: "reports",
-      label: "Reports",
-      icon: BarChart3,
-      page: "reports",
-      roles: ["admin", "team_lead"],
-    },
-    {
-      id: "notifications",
-      label: "Notifications",
-      icon: Bell,
-      page: "notifications",
-      roles: ["admin", "team_lead", "employee"],
-    },
-    {
-      id: "settings",
-      label: "Settings",
-      icon: Settings,
-      roles: ["admin"],
-      children: [
-        { id: "general-settings", label: "General", page: "settings", roles: ["admin"] },
-        { id: "user-management", label: "User Management", page: "user-management", roles: ["admin"] },
-      ],
-    },
+    { id: "dashboard", label: "Dashboard", icon: Home, page: null, roles: ["admin", "team_lead", "employee"] },
+    { id: "scheduling", label: "Staffing", icon: Calendar, page: "scheduling", roles: ["admin", "team_lead", "employee"] },
+    { id: "employees", label: "Employees", icon: Users, page: "employees-dash", roles: ["admin", "team_lead"] },
+    { id: "inventory", label: "Inventory", icon: Package, roles: ["admin", "team_lead"], children: [
+      { id: "inv-dashboard", label: "Dashboard", page: "inv-dashboard", roles: ["admin", "team_lead"] },
+      { id: "products", label: "Products", page: "products", roles: ["admin", "team_lead"] },
+      { id: "stock", label: "Stock", page: "stock", roles: ["admin", "team_lead"] },
+      { id: "inv-analytics", label: "Analytics", page: "inv-analytics", roles: ["admin"] },
+      { id: "inv-projections", label: "Projections", page: "inv-projections", roles: ["admin"] },
+    ]},
+    { id: "analytics", label: "Analytics", icon: BarChart3, page: "analytics", roles: ["admin", "team_lead"], children: [
+      { id: "reports", label: "Reports", page: "reports", roles: ["admin", "team_lead"] },
+      { id: "sales-projections", label: "Sales Forecast", page: "sales-projections", roles: ["admin"] },
+      { id: "staffing-projections", label: "Staffing Needs", page: "staffing-projections", roles: ["admin"] },
+      { id: "event-pnl", label: "Event P&L", page: "event-pnl", roles: ["admin"] },
+    ]},
+    { id: "my-shifts", label: "My Shifts", icon: User, page: "my-shifts", roles: ["admin", "team_lead", "employee"] },
+    { id: "notifications", label: "Notifications", icon: Bell, page: "notifications", roles: ["admin", "team_lead", "employee"] },
+    { id: "settings", label: "Settings", icon: Settings, page: "settings", roles: ["admin"], children: [
+      { id: "general-settings", label: "General", page: "settings", roles: ["admin"] },
+      { id: "user-management", label: "User Management", page: "user-management", roles: ["admin"] },
+    ]},
   ],
 };
 
@@ -454,12 +444,12 @@ function currency(value) {
 
 const Badge = ({ children, color = "primary", variant = "solid" }) => {
   const colors = {
-    primary: { bg: "#54CDF9", text: "#001F3F" },
+    primary: { bg: BRAND.primary, text: BRAND.navy },
     success: { bg: "#4CAF50", text: "#fff" },
     warning: { bg: "#FF9800", text: "#fff" },
     danger: { bg: "#F44336", text: "#fff" },
-    info: { bg: "#2196F3", text: "#fff" },
-    gray: { bg: "rgba(255,255,255,0.1)", text: "#E0E6FF" },
+    info: { bg: BRAND.lightBlue, text: "#fff" },
+    gray: { bg: BRAND.accentBlue, text: BRAND.navy },
   };
 
   const c = colors[color] || colors.primary;
@@ -494,23 +484,24 @@ const Modal = ({ isOpen, onClose, title, children, size = "md" }) => {
       onClick={onClose}
     >
       <div
-        className={`${sizes[size]} rounded-xl p-6 shadow-2xl`}
+        className={`${sizes[size]} rounded-2xl p-6 shadow-2xl`}
         style={{
-          background: BRAND.glass,
-          border: `1px solid ${BRAND.glassBorder}`,
-          backdropFilter: BRAND.blur,
+          background: BRAND.white,
+          border: `2px solid ${BRAND.accentBlue}`,
+          boxShadow: "0 16px 48px rgba(0,57,107,0.2)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-bold" style={{ color: BRAND.text }}>
+          <h2 className="text-xl font-bold" style={{ color: BRAND.navy }}>
             {title}
           </h2>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-white/10 rounded-lg transition"
+            className="p-1 rounded-lg transition"
+            style={{ color: BRAND.lightBlue }}
           >
-            <X size={20} style={{ color: BRAND.text }} />
+            <X size={20} />
           </button>
         </div>
         <div>{children}</div>
@@ -523,7 +514,7 @@ const Input = ({ label, value, onChange, type = "text", placeholder, error }) =>
   return (
     <div className="mb-4">
       {label && (
-        <label className="block text-sm font-medium mb-2" style={{ color: BRAND.text }}>
+        <label className="block text-sm font-semibold mb-2" style={{ color: BRAND.navy }}>
           {label}
         </label>
       )}
@@ -532,12 +523,13 @@ const Input = ({ label, value, onChange, type = "text", placeholder, error }) =>
         value={value}
         onChange={onChange}
         placeholder={placeholder}
-        className="w-full px-4 py-2 rounded-lg text-white transition focus:outline-none focus:ring-2"
+        className="w-full px-4 py-2.5 rounded-lg transition focus:outline-none focus:ring-2"
         style={{
-          background: "rgba(255,255,255,0.05)",
+          background: BRAND.white,
+          color: BRAND.navy,
           border: error
-            ? `1px solid ${BRAND.danger}`
-            : `1px solid ${BRAND.glassBorder}`,
+            ? `2px solid ${BRAND.danger}`
+            : `2px solid ${BRAND.accentBlue}`,
           focusRing: BRAND.primary,
         }}
       />
@@ -675,9 +667,9 @@ const VenueAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Sear
         onChange={handleInputChange}
         onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
         placeholder={placeholder}
-        className="w-full px-4 py-2 rounded-lg text-white transition focus:outline-none focus:ring-2"
+        className="w-full px-4 py-2 rounded-lg text-navy transition focus:outline-none focus:ring-2"
         style={{
-          background: "rgba(255,255,255,0.05)",
+          background: BRAND.accentBlue,
           border: `1px solid ${BRAND.glassBorder}`,
         }}
       />
@@ -691,13 +683,13 @@ const VenueAutocomplete = ({ value, onChange, onPlaceSelect, placeholder = "Sear
               <div
                 key={pred?.placeId || i}
                 className="px-3 py-2 cursor-pointer transition-colors"
-                style={{ color: "#e0e6ff", borderTop: i > 0 ? "1px solid rgba(255,255,255,0.05)" : "none" }}
+                style={{ color: BRAND.navy, borderTop: i > 0 ? "1px solid rgba(255,255,255,0.05)" : "none" }}
                 onMouseDown={() => handleSelect(s)}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(84,205,249,0.1)"; }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = `${BRAND.primary}20`; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
               >
                 <div style={{ color: "#54CDF9", fontWeight: 600 }}>{mainText}</div>
-                <div className="text-xs mt-0.5" style={{ color: "rgba(224,230,255,0.5)" }}>{secondaryText}</div>
+                <div className="text-xs mt-0.5" style={{ color: BRAND.textLight }}>{secondaryText}</div>
               </div>
             );
           })}
@@ -720,9 +712,9 @@ const Select = ({ label, value, onChange, options, placeholder }) => {
       <select
         value={value}
         onChange={onChange}
-        className="w-full px-4 py-2 rounded-lg text-white transition focus:outline-none focus:ring-2"
+        className="w-full px-4 py-2 rounded-lg text-navy transition focus:outline-none focus:ring-2"
         style={{
-          background: "rgba(255,255,255,0.05)",
+          background: BRAND.accentBlue,
           border: `1px solid ${BRAND.glassBorder}`,
         }}
       >
@@ -749,19 +741,19 @@ const Btn = ({
 }) => {
   const variants = {
     primary: {
-      bg: BRAND.primary,
-      text: "#001F3F",
-      hover: "#3BB8E8",
+      bg: BRAND.navy,
+      text: BRAND.white,
+      hover: BRAND.lightBlue,
     },
     secondary: {
-      bg: "rgba(255,255,255,0.1)",
-      text: BRAND.text,
-      hover: "rgba(255,255,255,0.15)",
+      bg: BRAND.accentBlue,
+      text: BRAND.navy,
+      hover: "#b8d4f0",
     },
     ghost: {
       bg: "transparent",
-      text: BRAND.text,
-      hover: "rgba(255,255,255,0.1)",
+      text: BRAND.navy,
+      hover: BRAND.accentBlue,
     },
     danger: {
       bg: BRAND.danger,
@@ -810,7 +802,7 @@ const EmptyState = ({ icon: Icon, title, message }) => {
       <h3 className="text-lg font-semibold mb-2" style={{ color: BRAND.text }}>
         {title}
       </h3>
-      <p className="text-sm" style={{ color: "rgba(224,230,255,0.6)" }}>
+      <p className="text-sm" style={{ color: BRAND.textMuted }}>
         {message}
       </p>
     </div>
@@ -836,7 +828,7 @@ const StatCard = ({ icon: Icon, label, value, trend, color = "primary" }) => {
     >
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium mb-1" style={{ color: "rgba(224,230,255,0.7)" }}>
+          <p className="text-sm font-medium mb-1" style={{ color: BRAND.lightBlue }}>
             {label}
           </p>
           <p className="text-2xl font-bold" style={{ color: colors[color] }}>
@@ -913,21 +905,21 @@ const LoginPage = ({ onLoginSuccess }) => {
   return (
     <div
       className="flex items-center justify-center p-4"
-      style={{ background: BRAND.gradient, height: "100dvh", minHeight: "-webkit-fill-available" }}
+      style={{ background: BRAND.navy, height: "100dvh", minHeight: "-webkit-fill-available" }}
     >
       <div
         className="w-full max-w-md p-8 rounded-2xl"
         style={{
-          background: BRAND.glass,
-          border: `1px solid ${BRAND.glassBorder}`,
-          backdropFilter: BRAND.blur,
+          background: BRAND.white,
+          border: `2px solid ${BRAND.accentBlue}`,
+          boxShadow: "0 16px 48px rgba(0,0,0,0.25)",
         }}
       >
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2" style={{ color: BRAND.primary }}>
-            Collide
+          <h1 className="text-3xl font-bold mb-2" style={{ color: BRAND.navy, fontFamily: "'Montserrat', sans-serif", letterSpacing: "2px" }}>
+            COLLIDE
           </h1>
-          <p className="text-sm" style={{ color: "rgba(224,230,255,0.7)" }}>
+          <p className="text-sm font-medium" style={{ color: BRAND.lightBlue }}>
             Staff Manager v5.0
           </p>
         </div>
@@ -950,7 +942,7 @@ const LoginPage = ({ onLoginSuccess }) => {
           />
 
           {error && (
-            <div className="p-3 rounded-lg text-sm" style={{ background: "rgba(244,67,54,0.2)", color: BRAND.danger }}>
+            <div className="p-3 rounded-lg text-sm" style={{ background: "rgba(244,67,54,0.1)", color: BRAND.danger }}>
               {error}
             </div>
           )}
@@ -964,7 +956,7 @@ const LoginPage = ({ onLoginSuccess }) => {
           </Btn>
         </form>
 
-        <p className="text-center text-xs mt-4" style={{ color: "rgba(224,230,255,0.5)" }}>
+        <p className="text-center text-xs mt-4" style={{ color: BRAND.lightBlue }}>
           Demo: admin@collide.ca / password
         </p>
       </div>
@@ -1035,23 +1027,24 @@ const CommandPalette = ({ isOpen, onClose, pages, currentPage, onNavigate }) => 
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl rounded-xl shadow-2xl overflow-hidden"
+        className="w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden"
         style={{
-          background: BRAND.glass,
-          border: `1px solid ${BRAND.glassBorder}`,
-          backdropFilter: BRAND.blur,
+          background: BRAND.white,
+          border: `2px solid ${BRAND.accentBlue}`,
+          boxShadow: "0 16px 48px rgba(0,57,107,0.2)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
-          <Search size={18} style={{ color: BRAND.primary }} />
+        <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: `2px solid ${BRAND.accentBlue}` }}>
+          <Search size={18} style={{ color: BRAND.navy }} />
           <input
             ref={inputRef}
             type="text"
             placeholder="Search pages..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 bg-transparent outline-none text-white"
+            className="flex-1 bg-transparent outline-none"
+            style={{ color: BRAND.navy }}
             onKeyDown={(e) => {
               if (e.key === "Escape") onClose();
             }}
@@ -1066,7 +1059,7 @@ const CommandPalette = ({ isOpen, onClose, pages, currentPage, onNavigate }) => 
               <button
                 key={item.id}
                 onClick={() => handleSelect(item)}
-                className="w-full text-left px-4 py-3 hover:bg-white/10 transition"
+                className="w-full text-left px-4 py-3 hover:bg-blue-50 transition"
                 style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}
               >
                 <p className="text-sm font-medium" style={{ color: BRAND.text }}>
@@ -1092,35 +1085,29 @@ const DashboardPage = ({ employees = [], events = [], locations = [], shifts = [
     .sort((a, b) => a.start_date.localeCompare(b.start_date))
     .slice(0, 5);
 
-  const totalStaff = (employees || []).length;
-  const activeEvents = (events || []).filter(e => e.status === "active").length;
+  // Unassigned shifts — shifts with no employee_id assigned
+  const unassignedShifts = (shifts || []).filter(s => !s.employee_id && events.find(e => e.id === s.event_id && e.end_date >= today));
 
   // Payroll summary — pay_records not yet loaded in this phase, show placeholder
   const payrollThisMonth = 0;
 
+  // Last inventory input date placeholder (will use stock update log when available)
+  const lastInventoryDate = "Awaiting first log";
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold mb-2" style={{ color: BRAND.text }}>
-          Dashboard
-        </h1>
-        <p style={{ color: "rgba(224,230,255,0.7)" }}>
-          Welcome back! Here's your team overview.
-        </p>
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <StatCard
-          icon={Users}
-          label="Total Staff"
-          value={totalStaff}
-          color="primary"
-        />
         <StatCard
           icon={Calendar}
           label="Upcoming Events"
           value={upcomingEvents.length}
-          color="warning"
+          color="primary"
+        />
+        <StatCard
+          icon={AlertCircle}
+          label="Unassigned Shifts"
+          value={unassignedShifts.length}
+          color={unassignedShifts.length > 0 ? "danger" : "success"}
         />
         <StatCard
           icon={DollarSign}
@@ -1129,10 +1116,9 @@ const DashboardPage = ({ employees = [], events = [], locations = [], shifts = [
           color="success"
         />
         <StatCard
-          icon={TrendingUp}
-          label="Avg Shift Duration"
-          value="6.5h"
-          trend={{ positive: true, value: 5 }}
+          icon={Clock}
+          label="Last Inventory Update"
+          value={lastInventoryDate}
           color="warning"
         />
       </div>
@@ -1146,14 +1132,14 @@ const DashboardPage = ({ employees = [], events = [], locations = [], shifts = [
               <div
                 key={event.id}
                 className="p-3 rounded-lg"
-                style={{ background: "rgba(255,255,255,0.05)" }}
+                style={{ background: BRAND.accentBlue }}
               >
                 <div className="flex justify-between items-start">
                   <div>
                     <p className="font-medium" style={{ color: BRAND.text }}>
                       {event.name}
                     </p>
-                    <p className="text-sm" style={{ color: "rgba(224,230,255,0.6)" }}>
+                    <p className="text-sm" style={{ color: BRAND.textMuted }}>
                       {formatDate(event.start_date)} — {formatDate(event.end_date)}
                     </p>
                   </div>
@@ -1342,7 +1328,7 @@ const EventsManagementPage = ({ events = [], locations = [], venues = [], eventV
             onClick={() => setActiveTab(tab)}
             className="px-4 py-2 rounded-lg text-sm font-medium transition"
             style={{
-              background: activeTab === tab ? `${BRAND.primary}20` : "rgba(255,255,255,0.05)",
+              background: activeTab === tab ? `${BRAND.primary}20` : BRAND.accentBlue,
               color: activeTab === tab ? BRAND.primary : "rgba(224,230,255,0.7)",
               border: `1px solid ${activeTab === tab ? BRAND.primary : BRAND.glassBorder}`,
             }}
@@ -1354,8 +1340,8 @@ const EventsManagementPage = ({ events = [], locations = [], venues = [], eventV
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="ml-auto px-3 py-1.5 rounded-lg text-sm text-white focus:outline-none"
-            style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}
+            className="ml-auto px-3 py-1.5 rounded-lg text-sm focus:outline-none"
+            style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}
           >
             <option value="">All Statuses</option>
             <option value="upcoming">Upcoming</option>
@@ -1388,14 +1374,14 @@ const EventsManagementPage = ({ events = [], locations = [], venues = [], eventV
                     <tr key={e.id} className="hover:bg-white/5 transition" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
                       <td className="py-3 px-3">
                         <div className="font-medium" style={{ color: BRAND.text }}>{e.name}</div>
-                        {e.description && <p className="text-xs mt-0.5" style={{ color: "rgba(224,230,255,0.5)" }}>{e.description.substring(0, 60)}</p>}
+                        {e.description && <p className="text-xs mt-0.5" style={{ color: BRAND.textLight }}>{e.description.substring(0, 60)}</p>}
                       </td>
                       <td className="py-3 px-3 text-center">
                         <span className="text-xs px-2 py-1 rounded-full" style={{ background: "rgba(84,205,249,0.15)", color: BRAND.primary }}>
                           {typeLabels[e.event_type] || e.event_type}
                         </span>
                       </td>
-                      <td className="py-3 px-3 text-center text-xs" style={{ color: "rgba(224,230,255,0.7)" }}>
+                      <td className="py-3 px-3 text-center text-xs" style={{ color: BRAND.lightBlue }}>
                         {e.start_date} &rarr; {e.end_date}
                       </td>
                       <td className="py-3 px-3 text-center">
@@ -1406,10 +1392,10 @@ const EventsManagementPage = ({ events = [], locations = [], venues = [], eventV
                       <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{eventVenuesCount}</td>
                       <td className="py-3 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => openEditEvent(e)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                          <button onClick={() => openEditEvent(e)} className="p-1.5 rounded-lg hover:bg-blue-50 transition">
                             <Edit2 size={14} style={{ color: BRAND.primary }} />
                           </button>
-                          <button onClick={() => handleDeleteEvent(e.id)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                          <button onClick={() => handleDeleteEvent(e.id)} className="p-1.5 rounded-lg hover:bg-blue-50 transition">
                             <Trash2 size={14} style={{ color: BRAND.danger }} />
                           </button>
                         </div>
@@ -1445,16 +1431,16 @@ const EventsManagementPage = ({ events = [], locations = [], venues = [], eventV
                   return (
                     <tr key={ven.id} className="hover:bg-white/5 transition" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
                       <td className="py-3 px-3 font-medium" style={{ color: BRAND.text }}>{ven.name}</td>
-                      <td className="py-3 px-3 text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>{ven.address || "—"}</td>
+                      <td className="py-3 px-3 text-xs" style={{ color: BRAND.textMuted }}>{ven.address || "—"}</td>
                       <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{ven.city || "—"}</td>
                       <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{ven.province || "—"}</td>
                       <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{venueEventCount}</td>
                       <td className="py-3 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <button onClick={() => openEditVenue(ven)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                          <button onClick={() => openEditVenue(ven)} className="p-1.5 rounded-lg hover:bg-blue-50 transition">
                             <Edit2 size={14} style={{ color: BRAND.primary }} />
                           </button>
-                          <button onClick={() => handleDeleteVenue(ven.id)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                          <button onClick={() => handleDeleteVenue(ven.id)} className="p-1.5 rounded-lg hover:bg-blue-50 transition">
                             <Trash2 size={14} style={{ color: BRAND.danger }} />
                           </button>
                         </div>
@@ -1487,7 +1473,7 @@ const EventsManagementPage = ({ events = [], locations = [], venues = [], eventV
             <label className="block text-sm font-medium mb-2" style={{ color: BRAND.text }}>Venues</label>
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {venues.length === 0 ? (
-                <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>No venues available. Create venues in the Venues tab first.</p>
+                <p className="text-xs" style={{ color: BRAND.textMuted }}>No venues available. Create venues in the Venues tab first.</p>
               ) : (
                 venues.map(ven => (
                   <label key={ven.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-white/5 transition cursor-pointer">
@@ -1506,7 +1492,7 @@ const EventsManagementPage = ({ events = [], locations = [], venues = [], eventV
                     />
                     <div>
                       <div className="text-sm" style={{ color: BRAND.text }}>{ven.name}</div>
-                      <div className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>{ven.city}, {ven.province}</div>
+                      <div className="text-xs" style={{ color: BRAND.textLight }}>{ven.city}, {ven.province}</div>
                     </div>
                   </label>
                 ))
@@ -1637,7 +1623,7 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <button onClick={() => setViewMode("month")} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition">
+          <button onClick={() => setViewMode("month")} className="inline-flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-blue-50 transition">
             <ChevronLeft size={18} style={{ color: BRAND.primary }} />
             <span style={{ color: BRAND.text }}>Back to Month</span>
           </button>
@@ -1661,7 +1647,7 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
                           <p className="font-medium text-sm" style={{ color: BRAND.text }}>{event.name}</p>
                           <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: `${color}20`, color }}>{typeLabels[event.event_type] || event.event_type}</span>
                         </div>
-                        <p className="text-xs mt-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+                        <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>
                           {formatDate(event.start_date)} — {formatDate(event.end_date)}
                           {venueNames.length > 0 && ` • ${venueNames.join(", ")}`}
                           {staffCount > 0 && ` • ${staffCount} staff`}
@@ -1686,7 +1672,7 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
                     if (hourShifts.length === 0) return null;
                     return (
                       <div key={hour} className="flex items-start gap-4">
-                        <div className="w-16 text-sm font-medium flex-shrink-0 pt-1" style={{ color: "rgba(224,230,255,0.7)" }}>
+                        <div className="w-16 text-sm font-medium flex-shrink-0 pt-1" style={{ color: BRAND.lightBlue }}>
                           {String(hour).padStart(2, "0")}:00
                         </div>
                         <div className="flex-1 space-y-1">
@@ -1694,11 +1680,11 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
                             const emp = employees.find(e => e.id === shift.employee_id);
                             const evt = events.find(e => e.id === shift.event_id);
                             return (
-                              <div key={shift.id} className="p-2 rounded-lg" style={{ background: "rgba(84,205,249,0.1)", borderLeft: `3px solid ${BRAND.primary}` }}>
+                              <div key={shift.id} className="p-2 rounded-lg" style={{ background: `${BRAND.primary}20`, borderLeft: `3px solid ${BRAND.primary}` }}>
                                 <p className="text-sm font-medium" style={{ color: BRAND.text }}>
                                   {emp ? `${emp.first_name} ${emp.last_name}` : "Unassigned"} {shift.role ? `— ${shift.role}` : ""}
                                 </p>
-                                <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
+                                <p className="text-xs" style={{ color: BRAND.textMuted }}>
                                   {formatTime(shift.start_time)} - {formatTime(shift.end_time)} {evt ? `• ${evt.name}` : ""}
                                 </p>
                               </div>
@@ -1720,7 +1706,7 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
               ) : (
                 <div className="space-y-2">
                   {employees.slice(0, 8).map(emp => (
-                    <div key={emp.id} className="p-2 rounded-lg text-sm cursor-pointer hover:bg-white/10 transition" style={{ background: "rgba(255,255,255,0.05)" }}>
+                    <div key={emp.id} className="p-2 rounded-lg text-sm cursor-pointer hover:bg-blue-50 transition" style={{ background: BRAND.accentBlue }}>
                       <p style={{ color: BRAND.text }}>{emp.first_name} {emp.last_name}</p>
                       <div className="flex flex-wrap gap-1 mt-1">
                         {(employeeSkills.filter(es => es.employee_id === emp.id) || []).slice(0, 2).map(es => (
@@ -1789,12 +1775,12 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
         {Object.entries(statusColors).map(([status, color]) => (
           <div key={status} className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-sm" style={{ background: color }} />
-            <span className="text-xs capitalize" style={{ color: "rgba(224,230,255,0.7)" }}>{status}</span>
+            <span className="text-xs capitalize" style={{ color: BRAND.lightBlue }}>{status}</span>
           </div>
         ))}
       </div>
 
-      <div className="rounded-xl overflow-hidden" style={{ background: "rgba(255,255,255,0.03)", border: `1px solid ${BRAND.glassBorder}` }}>
+      <div className="rounded-xl overflow-hidden" style={{ background: `${BRAND.accentBlue}40`, border: `1px solid ${BRAND.glassBorder}` }}>
         {/* Day headers */}
         <div className="grid grid-cols-7">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
@@ -1831,8 +1817,8 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
                       className={`cursor-pointer transition hover:bg-white/5`}
                       style={{
                         minHeight: cellHeight,
-                        borderRight: colIdx < 6 ? `1px solid rgba(255,255,255,0.04)` : "none",
-                        borderBottom: rowIdx < rows.length - 1 ? `1px solid rgba(255,255,255,0.04)` : "none",
+                        borderRight: colIdx < 6 ? `1px solid ${BRAND.accentBlue}` : "none",
+                        borderBottom: rowIdx < rows.length - 1 ? `1px solid ${BRAND.accentBlue}` : "none",
                         background: dayNum ? (isToday ? "rgba(84,205,249,0.08)" : "transparent") : "rgba(0,0,0,0.15)",
                       }}
                     >
@@ -1896,12 +1882,12 @@ const CalendarViewPage = ({ events = [], employees = [], shifts = [], locations 
                       {typeLabels[bar.event.event_type] || ""}
                     </span>
                     {venueNames.length > 0 && (
-                      <span className="text-xs truncate hidden md:inline" style={{ color: "rgba(224,230,255,0.5)", lineHeight: `${barHeight}px` }}>
+                      <span className="text-xs truncate hidden md:inline" style={{ color: BRAND.textLight, lineHeight: `${barHeight}px` }}>
                         📍{venueNames[0]}
                       </span>
                     )}
                     {staffCount > 0 && (
-                      <span className="text-xs flex-shrink-0 hidden lg:inline" style={{ color: "rgba(224,230,255,0.5)", lineHeight: `${barHeight}px` }}>
+                      <span className="text-xs flex-shrink-0 hidden lg:inline" style={{ color: BRAND.textLight, lineHeight: `${barHeight}px` }}>
                         👥{staffCount}
                       </span>
                     )}
@@ -1999,17 +1985,17 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts 
 
         <SectionCard title="Roles Needed" icon={Briefcase}>
           {eventRoles.length === 0 ? (
-            <p className="text-sm" style={{ color: "rgba(224,230,255,0.6)" }}>
+            <p className="text-sm" style={{ color: BRAND.textMuted }}>
               No roles defined for this event
             </p>
           ) : (
             <div className="space-y-2">
               {eventRoles.map((role) => (
-                <div key={role.id} className="p-2 rounded-lg" style={{ background: "rgba(255,255,255,0.05)" }}>
+                <div key={role.id} className="p-2 rounded-lg" style={{ background: BRAND.accentBlue }}>
                   <p className="text-sm font-medium" style={{ color: BRAND.text }}>
                     {role.role_name}
                   </p>
-                  <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
+                  <p className="text-xs" style={{ color: BRAND.textMuted }}>
                     Need {role.qty_needed} staff
                   </p>
                 </div>
@@ -2030,13 +2016,13 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts 
                 <div
                   key={shift.id}
                   className="flex items-center justify-between p-3 rounded-lg"
-                  style={{ background: "rgba(255,255,255,0.05)" }}
+                  style={{ background: BRAND.accentBlue }}
                 >
                   <div>
                     <p className="font-medium text-sm" style={{ color: BRAND.text }}>
                       {employee?.first_name} {employee?.last_name}
                     </p>
-                    <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
+                    <p className="text-xs" style={{ color: BRAND.textMuted }}>
                       {formatTime(shift.start_time)} - {formatTime(shift.end_time)}
                       {shift.role && ` • ${shift.role}`}
                     </p>
@@ -2059,7 +2045,7 @@ const ShiftBuilderPage = ({ events = [], employees = [], shifts: existingShifts 
           {showAddForm && (
             <div
               className="p-4 rounded-lg space-y-3 mb-3"
-              style={{ background: "rgba(255,255,255,0.05)" }}
+              style={{ background: BRAND.accentBlue }}
             >
               <Select
                 label="Employee"
@@ -2264,23 +2250,23 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
       {/* ========== ROLE DEFINITIONS MANAGER ========== */}
       {showRoleManager && (
         <SectionCard title="Role Definitions" icon={Settings}>
-          <p className="text-xs mb-3" style={{ color: "rgba(224,230,255,0.5)" }}>
+          <p className="text-xs mb-3" style={{ color: BRAND.textLight }}>
             Create, edit, or delete role types. These appear in the dropdown when adding roles to events. Descriptions help staff understand what each role involves.
           </p>
           <div className="space-y-2">
             {roleDefs.map((def) => (
-              <div key={def.name} className="p-3 rounded-lg" style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
+              <div key={def.name} className="p-3 rounded-lg" style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}>
                 {editingDef === def.name ? (
                   <div className="space-y-2">
                     <Input label="Role Name" value={editDefName} onChange={(e) => setEditDefName(e.target.value)} />
                     <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: "rgba(224,230,255,0.7)" }}>Description</label>
+                      <label className="block text-xs font-medium mb-1" style={{ color: BRAND.lightBlue }}>Description</label>
                       <textarea
                         value={editDefDesc}
                         onChange={(e) => setEditDefDesc(e.target.value)}
                         rows={2}
                         className="w-full rounded-lg px-3 py-2 text-sm"
-                        style={{ background: "rgba(255,255,255,0.08)", border: `1px solid ${BRAND.glassBorder}`, color: BRAND.text, resize: "vertical" }}
+                        style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}`, color: BRAND.text, resize: "vertical" }}
                         placeholder="What does this role do?"
                       />
                     </div>
@@ -2294,7 +2280,7 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm" style={{ color: BRAND.text }}>{def.name}</p>
                       {def.description && (
-                        <p className="text-xs mt-0.5" style={{ color: "rgba(224,230,255,0.5)" }}>{def.description}</p>
+                        <p className="text-xs mt-0.5" style={{ color: BRAND.textLight }}>{def.description}</p>
                       )}
                     </div>
                     <div className="flex gap-1 shrink-0">
@@ -2312,13 +2298,13 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
             <p className="text-xs font-medium" style={{ color: BRAND.primary }}>Add Custom Role</p>
             <Input label="Role Name" value={customRoleName} onChange={(e) => setCustomRoleName(e.target.value)} placeholder="e.g. Brand Ambassador" />
             <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: "rgba(224,230,255,0.7)" }}>Description</label>
+              <label className="block text-xs font-medium mb-1" style={{ color: BRAND.lightBlue }}>Description</label>
               <textarea
                 value={customRoleDesc}
                 onChange={(e) => setCustomRoleDesc(e.target.value)}
                 rows={2}
                 className="w-full rounded-lg px-3 py-2 text-sm"
-                style={{ background: "rgba(255,255,255,0.08)", border: `1px solid ${BRAND.glassBorder}`, color: BRAND.text, resize: "vertical" }}
+                style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}`, color: BRAND.text, resize: "vertical" }}
                 placeholder="Describe what this role does at events..."
               />
             </div>
@@ -2364,7 +2350,7 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
 
               if (editingRole === role.id) {
                 return (
-                  <div key={role.id} className="p-3 rounded-lg space-y-2" style={{ background: "rgba(84,205,249,0.08)", border: `1px solid ${BRAND.primary}40` }}>
+                  <div key={role.id} className="p-3 rounded-lg space-y-2" style={{ background: `${BRAND.accentBlue}80`, border: `1px solid ${BRAND.primary}40` }}>
                     <Select
                       label="Role"
                       value={editForm.role_name}
@@ -2387,19 +2373,19 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
               }
 
               return (
-                <div key={role.id} className="space-y-2 p-3 rounded-lg" style={{ background: "rgba(255,255,255,0.05)" }}>
+                <div key={role.id} className="space-y-2 p-3 rounded-lg" style={{ background: BRAND.accentBlue }}>
                   <div className="flex justify-between items-start">
                     <div className="flex-1 min-w-0">
                       <p className="font-medium" style={{ color: BRAND.text }}>{role.role_name}</p>
                       {desc && <p className="text-xs mt-0.5" style={{ color: "rgba(224,230,255,0.45)" }}>{desc}</p>}
-                      <p className="text-xs mt-1" style={{ color: "rgba(224,230,255,0.6)" }}>{filled}/{role.qty_needed} filled</p>
+                      <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>{filled}/{role.qty_needed} filled</p>
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <Btn icon={Edit2} size="sm" variant="ghost" onClick={() => handleStartEdit(role)} />
                       <Btn icon={Trash2} size="sm" variant="danger" onClick={() => handleRemoveRole(role.id)} />
                     </div>
                   </div>
-                  <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+                  <div className="h-2 rounded-full overflow-hidden" style={{ background: BRAND.accentBlue }}>
                     <div className="h-full transition-all" style={{ width: `${fillPct}%`, background: statusColor }} />
                   </div>
                 </div>
@@ -2411,7 +2397,7 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
         {/* ADD ROLE TO EVENT */}
         <div className="mt-4">
           {showAddRole && (
-            <div className="p-4 rounded-lg space-y-3 mb-3" style={{ background: "rgba(255,255,255,0.05)" }}>
+            <div className="p-4 rounded-lg space-y-3 mb-3" style={{ background: BRAND.accentBlue }}>
               <Select
                 label="Role Name"
                 value={newRole.role_name}
@@ -2443,6 +2429,45 @@ const RoleRequirementsPage = ({ events = [], shifts = [], locations = [], employ
           )}
         </div>
       </SectionCard>
+    </div>
+  );
+};
+
+// ============================================================================
+// PAGES: SHIFTS & ROLES
+// ============================================================================
+
+const ShiftsRolesPage = ({ events = [], employees = [], shifts = [], locations = [], roleRequirements = [], onRefresh }) => {
+  const [activeTab, setActiveTab] = useState("shifts"); // shifts | roles
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Shifts & Roles</h1>
+        <div className="flex gap-2">
+          {[{ id: "shifts", label: "Shift Builder", icon: Briefcase }, { id: "roles", label: "Role Requirements", icon: Users }].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition"
+              style={{
+                background: activeTab === tab.id ? `${BRAND.primary}20` : BRAND.accentBlue,
+                color: activeTab === tab.id ? BRAND.primary : "rgba(224,230,255,0.7)",
+                border: `1px solid ${activeTab === tab.id ? BRAND.primary : BRAND.glassBorder}`,
+              }}
+            >
+              <tab.icon size={15} />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === "shifts" ? (
+        <ShiftBuilderPage events={events} employees={employees} shifts={shifts} locations={locations} roleRequirements={roleRequirements} onRefresh={onRefresh} />
+      ) : (
+        <RoleRequirementsPage events={events} shifts={shifts} locations={locations} employees={employees} roleRequirements={roleRequirements} onRefresh={onRefresh} />
+      )}
     </div>
   );
 };
@@ -2482,7 +2507,7 @@ const DirectoryPage = ({ employees = [], employeeSkills = [], skills = [] }) => 
         <h1 className="text-2xl font-bold mb-2" style={{ color: BRAND.text }}>
           Employee Directory
         </h1>
-        <p style={{ color: "rgba(224,230,255,0.7)" }}>
+        <p style={{ color: BRAND.lightBlue }}>
           View and manage your team members
         </p>
       </div>
@@ -2530,14 +2555,14 @@ const DirectoryPage = ({ employees = [], employeeSkills = [], skills = [] }) => 
                   <p className="font-semibold" style={{ color: BRAND.text }}>
                     {emp.first_name} {emp.last_name}
                   </p>
-                  <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
+                  <p className="text-xs" style={{ color: BRAND.textMuted }}>
                     {emp.email}
                   </p>
                 </div>
               </div>
 
               {emp.phone && (
-                <p className="text-xs mb-2" style={{ color: "rgba(224,230,255,0.6)" }}>
+                <p className="text-xs mb-2" style={{ color: BRAND.textMuted }}>
                   {emp.phone}
                 </p>
               )}
@@ -2620,7 +2645,7 @@ const SkillsTagsPage = ({ employees = [], skills = [], employeeSkills = [], onRe
           <h1 className="text-2xl font-bold mb-2" style={{ color: BRAND.text }}>
             Skills & Tags
           </h1>
-          <p style={{ color: "rgba(224,230,255,0.7)" }}>
+          <p style={{ color: BRAND.lightBlue }}>
             Manage employee skills and proficiency levels
           </p>
         </div>
@@ -2695,7 +2720,7 @@ const SkillsTagsPage = ({ employees = [], skills = [], employeeSkills = [], onRe
           return (
             <SectionCard key={emp.id} title={`${emp.first_name} ${emp.last_name}`} icon={User}>
               {empSkills.length === 0 ? (
-                <p className="text-sm text-center py-4" style={{ color: "rgba(224,230,255,0.6)" }}>
+                <p className="text-sm text-center py-4" style={{ color: BRAND.textMuted }}>
                   No skills added
                 </p>
               ) : (
@@ -2704,7 +2729,7 @@ const SkillsTagsPage = ({ employees = [], skills = [], employeeSkills = [], onRe
                     <div
                       key={es.id}
                       className="flex items-center justify-between p-2 rounded-lg"
-                      style={{ background: "rgba(255,255,255,0.05)" }}
+                      style={{ background: BRAND.accentBlue }}
                     >
                       <div>
                         <p className="text-sm font-medium" style={{ color: BRAND.text }}>
@@ -2729,6 +2754,416 @@ const SkillsTagsPage = ({ employees = [], skills = [], employeeSkills = [], onRe
             </SectionCard>
           );
         })}
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// PAGES: DIRECTORY & SKILLS (MERGED)
+// ============================================================================
+
+const DirectorySkillsPage = ({ employees = [], employeeSkills = [], skills = [], onRefresh }) => {
+  const [activeTab, setActiveTab] = useState("directory"); // directory | skills | by-role
+
+  // Group employees by role for the "By Role" tab
+  const employeesByRole = useMemo(() => {
+    const groups = {};
+    employees.forEach(emp => {
+      const role = emp.role || "unassigned";
+      if (!groups[role]) groups[role] = [];
+      groups[role].push(emp);
+    });
+    return groups;
+  }, [employees]);
+
+  // Group employees by skill for the "By Skill" tab
+  const employeesBySkill = useMemo(() => {
+    const groups = {};
+    skills.forEach(sk => {
+      const empsWithSkill = employeeSkills
+        .filter(es => es.skill_id === sk.id)
+        .map(es => employees.find(e => e.id === es.employee_id))
+        .filter(Boolean);
+      if (empsWithSkill.length > 0) groups[sk.name] = empsWithSkill;
+    });
+    return groups;
+  }, [employees, employeeSkills, skills]);
+
+  // A-Z sorted employees
+  const sortedEmployees = useMemo(() => {
+    return [...employees].sort((a, b) => {
+      const nameA = (a.name || `${a.first_name || ""} ${a.last_name || ""}`.trim()).toLowerCase();
+      const nameB = (b.name || `${b.first_name || ""} ${b.last_name || ""}`.trim()).toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  }, [employees]);
+
+  const tabDefs = [
+    { id: "directory", label: "A to Z", icon: Users },
+    { id: "skills", label: "By Skill", icon: Tag },
+    { id: "by-role", label: "By Role", icon: Briefcase },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-5">
+        <h1 className="text-2xl font-bold" style={{ color: BRAND.navy }}>Employees</h1>
+        <div className="grid grid-cols-3 gap-0 rounded-xl overflow-hidden" style={{ border: `2px solid ${BRAND.accentBlue}` }}>
+          {tabDefs.map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className="flex items-center justify-center gap-2 py-4 text-sm font-bold uppercase tracking-wider transition-all"
+              style={{
+                background: activeTab === tab.id ? BRAND.navy : BRAND.white,
+                color: activeTab === tab.id ? BRAND.white : BRAND.navy,
+                borderRight: tab.id !== "by-role" ? `1px solid ${BRAND.accentBlue}` : "none",
+              }}>
+              <tab.icon size={18} /> {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* A to Z Directory — cards with skills on left, role on right */}
+      {activeTab === "directory" && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {sortedEmployees.map(emp => {
+            const empSkills = employeeSkills.filter(es => es.employee_id === emp.id).map(es => skills.find(s => s.id === es.skill_id)?.name).filter(Boolean);
+            const empName = emp.name || `${emp.first_name || ""} ${emp.last_name || ""}`.trim();
+            const empRole = emp.role === "team_lead" ? "Team Lead" : emp.role || "—";
+            return (
+              <div key={emp.id} className="rounded-xl p-4 flex items-start gap-3 transition hover:shadow-md"
+                style={{ background: BRAND.white, border: `2px solid ${BRAND.accentBlue}` }}>
+                <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: BRAND.navy }}>
+                  <User size={18} style={{ color: BRAND.white }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-semibold text-sm" style={{ color: BRAND.navy }}>{empName}</div>
+                      <div className="text-xs mt-0.5" style={{ color: BRAND.lightBlue }}>{emp.email}</div>
+                    </div>
+                    <span className="flex-shrink-0 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
+                      style={{ background: emp.role === "admin" ? `${BRAND.primary}20` : emp.role === "team_lead" ? "rgba(251,191,36,0.15)" : "rgba(74,222,128,0.15)",
+                        color: emp.role === "admin" ? BRAND.navy : emp.role === "team_lead" ? "#b8860b" : "#2d8a4e" }}>
+                      {empRole}
+                    </span>
+                  </div>
+                  {empSkills.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {empSkills.map(sk => (
+                        <span key={sk} className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `${BRAND.primary}15`, color: BRAND.navy }}>{sk}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* By Skill — grouped like By Role format */}
+      {activeTab === "skills" && (
+        <div className="space-y-4">
+          {Object.keys(employeesBySkill).length === 0 ? (
+            <div className="text-center py-8">
+              <Tag size={32} style={{ color: BRAND.lightBlue, margin: "0 auto 8px" }} />
+              <p className="text-sm font-medium" style={{ color: BRAND.navy }}>No skill assignments yet</p>
+              <p className="text-xs mt-1" style={{ color: BRAND.lightBlue }}>Assign skills to employees to see them grouped here.</p>
+            </div>
+          ) : Object.entries(employeesBySkill).sort(([a], [b]) => a.localeCompare(b)).map(([skillName, emps]) => (
+            <div key={skillName} className="rounded-2xl overflow-hidden" style={{ border: `2px solid ${BRAND.accentBlue}` }}>
+              <div className="px-5 py-3 flex items-center gap-2" style={{ background: `${BRAND.accentBlue}60` }}>
+                <Tag size={16} style={{ color: BRAND.navy }} />
+                <span className="font-bold text-sm uppercase tracking-wider" style={{ color: BRAND.navy }}>{skillName}</span>
+                <Badge color="primary">{emps.length}</Badge>
+              </div>
+              <div className="divide-y" style={{ borderColor: BRAND.accentBlue }}>
+                {emps.map(emp => {
+                  const empRole = emp.role === "team_lead" ? "Team Lead" : emp.role || "—";
+                  return (
+                    <div key={emp.id} className="px-5 py-3 flex items-center gap-4 hover:bg-blue-50 transition">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: BRAND.navy }}>
+                        <User size={16} style={{ color: BRAND.white }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm" style={{ color: BRAND.navy }}>{emp.name || `${emp.first_name || ""} ${emp.last_name || ""}`.trim()}</div>
+                        <div className="text-xs" style={{ color: BRAND.lightBlue }}>{emp.email}</div>
+                      </div>
+                      <span className="flex-shrink-0 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide"
+                        style={{ background: emp.role === "admin" ? `${BRAND.primary}20` : emp.role === "team_lead" ? "rgba(251,191,36,0.15)" : "rgba(74,222,128,0.15)",
+                          color: emp.role === "admin" ? BRAND.navy : emp.role === "team_lead" ? "#b8860b" : "#2d8a4e" }}>
+                        {empRole}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* By Role — grouped cards */}
+      {activeTab === "by-role" && (
+        <div className="space-y-4">
+          {Object.entries(employeesByRole).sort(([a], [b]) => a.localeCompare(b)).map(([role, emps]) => (
+            <div key={role} className="rounded-2xl overflow-hidden" style={{ border: `2px solid ${BRAND.accentBlue}` }}>
+              <div className="px-5 py-3 flex items-center gap-2" style={{ background: `${BRAND.accentBlue}60` }}>
+                <Briefcase size={16} style={{ color: BRAND.navy }} />
+                <span className="font-bold text-sm uppercase tracking-wider" style={{ color: BRAND.navy }}>{role === "team_lead" ? "Team Lead" : role}</span>
+                <Badge color="primary">{emps.length}</Badge>
+              </div>
+              <div className="divide-y" style={{ borderColor: BRAND.accentBlue }}>
+                {emps.map(emp => {
+                  const empSkills = employeeSkills.filter(es => es.employee_id === emp.id).map(es => skills.find(s => s.id === es.skill_id)?.name).filter(Boolean);
+                  return (
+                    <div key={emp.id} className="px-5 py-3 flex items-center gap-4 hover:bg-blue-50 transition">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: BRAND.navy }}>
+                        <User size={16} style={{ color: BRAND.white }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm" style={{ color: BRAND.navy }}>{emp.name || `${emp.first_name || ""} ${emp.last_name || ""}`.trim()}</div>
+                        <div className="text-xs" style={{ color: BRAND.lightBlue }}>{emp.email}</div>
+                      </div>
+                      {empSkills.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {empSkills.slice(0, 3).map(sk => (
+                            <span key={sk} className="px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ background: `${BRAND.primary}15`, color: BRAND.navy }}>{sk}</span>
+                          ))}
+                          {empSkills.length > 3 && <span className="text-[10px]" style={{ color: BRAND.lightBlue }}>+{empSkills.length - 3}</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
+// PAGES: EVENTS (Combined Calendar & List View)
+// ============================================================================
+
+const EventsPage = ({ events = [], employees = [], shifts = [], locations = [], venues = [], eventVenues = [], availability = {}, employeeSkills = [], skills = [], roleRequirements = [], onRefresh }) => {
+  const [viewMode, setViewMode] = useState("events"); // events | shifts
+  const [expandedEvents, setExpandedEvents] = useState(new Set());
+
+  const toggleEventExpand = (eventId) => {
+    const next = new Set(expandedEvents);
+    if (next.has(eventId)) next.delete(eventId);
+    else next.add(eventId);
+    setExpandedEvents(next);
+  };
+
+  const now = new Date().toISOString().split("T")[0];
+  const sortedEvents = useMemo(() => [...events].sort((a, b) => a.start_date.localeCompare(b.start_date)), [events]);
+
+  return (
+    <div className="space-y-4">
+      {/* View toggle */}
+      <div className="flex gap-2">
+        {[{ id: "events", label: "Calendar View", icon: Calendar }, { id: "shifts", label: "Event View", icon: List }].map(v => (
+          <button key={v.id} onClick={() => setViewMode(v.id)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold transition"
+            style={{ background: viewMode === v.id ? BRAND.navy : BRAND.accentBlue, color: viewMode === v.id ? BRAND.white : BRAND.navy }}>
+            <v.icon size={15} /> {v.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Calendar View = Calendar at top + Event list below */}
+      {viewMode === "events" && (
+        <div className="space-y-6">
+          <CalendarViewPage events={events} employees={employees} shifts={shifts} locations={locations} availability={availability} employeeSkills={employeeSkills} skills={skills} venues={venues} eventVenues={eventVenues} />
+          <EventsManagementPage events={events} locations={locations} venues={venues} eventVenues={eventVenues} onRefresh={onRefresh} />
+        </div>
+      )}
+
+      {/* Event View = Events with shifts as expandable sub-items */}
+      {viewMode === "shifts" && (
+        <div className="space-y-2">
+          {sortedEvents.length === 0 ? (
+            <EmptyState icon={Calendar} title="No events" message="Create events to see shifts here" />
+          ) : sortedEvents.map(event => {
+            const eventShifts = shifts.filter(s => s.event_id === event.id);
+            const isExpanded = expandedEvents.has(event.id);
+            const isPast = event.end_date < now;
+            return (
+              <div key={event.id} className="rounded-xl overflow-hidden" style={{ border: `2px solid ${BRAND.accentBlue}`, opacity: isPast ? 0.6 : 1 }}>
+                <button onClick={() => toggleEventExpand(event.id)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-left transition hover:bg-blue-50"
+                  style={{ background: isExpanded ? `${BRAND.accentBlue}` : BRAND.white }}>
+                  <ChevronDown size={16} style={{ color: BRAND.navy, transform: isExpanded ? "rotate(0)" : "rotate(-90deg)", transition: "transform 0.2s" }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm" style={{ color: BRAND.navy }}>{event.name}</div>
+                    <div className="text-xs" style={{ color: BRAND.lightBlue }}>{event.start_date} — {event.end_date}</div>
+                  </div>
+                  <Badge color={isPast ? "gray" : "primary"}>{eventShifts.length} shift{eventShifts.length !== 1 ? "s" : ""}</Badge>
+                </button>
+                {isExpanded && (
+                  <div className="border-t" style={{ borderColor: BRAND.accentBlue }}>
+                    {eventShifts.length === 0 ? (
+                      <div className="px-6 py-3 text-sm" style={{ color: BRAND.lightBlue }}>No shifts created for this event.</div>
+                    ) : eventShifts.map(shift => {
+                      const emp = employees.find(e => e.id === shift.employee_id);
+                      return (
+                        <div key={shift.id} className="flex items-center gap-3 px-6 py-2.5 text-sm hover:bg-blue-50 transition" style={{ borderBottom: `1px solid ${BRAND.accentBlue}` }}>
+                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: emp ? BRAND.success : BRAND.danger }}></div>
+                          <span className="font-medium" style={{ color: BRAND.navy }}>{shift.role || "Unspecified"}</span>
+                          <span style={{ color: BRAND.lightBlue }}>—</span>
+                          <span style={{ color: emp ? BRAND.navy : BRAND.danger }}>{emp ? (emp.name || `${emp.first_name} ${emp.last_name}`) : "Unassigned"}</span>
+                          <span className="ml-auto text-xs" style={{ color: BRAND.lightBlue }}>{shift.shift_date || "No date"}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
+// PAGES: STAFFING (bookings + availability + claimed/unclaimed roles)
+// ============================================================================
+
+const StaffingPage = ({ events = [], employees = [], shifts = [], locations = [], availability: parentAvailability = {}, roleRequirements = [], onRefresh, user, currentRole, venues = [], eventVenues = [] }) => {
+  const now = new Date();
+  const today = now.toISOString().split("T")[0];
+
+  // Build 14-day calendar grid
+  const calendarDays = useMemo(() => {
+    const days = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(now);
+      d.setDate(d.getDate() + i);
+      const dateStr = d.toISOString().split("T")[0];
+      const dayEvents = events.filter(e => e.start_date <= dateStr && e.end_date >= dateStr);
+      const hasVacancy = dayEvents.some(ev => {
+        const evReqs = roleRequirements.filter(r => r.event_id === ev.id);
+        const evShifts = shifts.filter(s => s.event_id === ev.id && s.employee_id);
+        const totalNeeded = evReqs.reduce((sum, r) => sum + (r.qty_needed || 1), 0);
+        return evShifts.length < totalNeeded;
+      });
+      days.push({ date: d, dateStr, dayEvents, hasVacancy, hasEvents: dayEvents.length > 0 });
+    }
+    return days;
+  }, [events, shifts, roleRequirements, now]);
+
+  // Build unclaimed shifts list
+  const unclaimedShifts = useMemo(() => {
+    const result = [];
+    const upcomingEvents = events.filter(e => e.end_date >= today).sort((a, b) => a.start_date.localeCompare(b.start_date));
+    upcomingEvents.forEach(event => {
+      const evReqs = roleRequirements.filter(r => r.event_id === event.id);
+      const evShifts = shifts.filter(s => s.event_id === event.id && s.employee_id);
+      const filledRoles = {};
+      evShifts.forEach(s => { filledRoles[s.role] = (filledRoles[s.role] || 0) + 1; });
+      evReqs.forEach(req => {
+        const role = req.role_name || "Unspecified";
+        const needed = req.qty_needed || 1;
+        const filled = filledRoles[role] || 0;
+        const open = needed - filled;
+        if (open > 0) {
+          const daysUntil = Math.max(0, Math.ceil((new Date(event.start_date) - now) / (1000 * 60 * 60 * 24)));
+          const importance = daysUntil <= 3 ? "Critical" : daysUntil <= 7 ? "High" : daysUntil <= 14 ? "Medium" : "Acceptable";
+          for (let i = 0; i < open; i++) {
+            result.push({ id: `${event.id}-${role}-${i}`, eventName: event.name, role, date: event.start_date, daysUntil, importance, eventId: event.id });
+          }
+        }
+      });
+    });
+    return result.sort((a, b) => a.daysUntil - b.daysUntil);
+  }, [events, shifts, roleRequirements, today]);
+
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const importanceColors = { Critical: BRAND.danger, High: "#f97316", Medium: BRAND.warning, Acceptable: BRAND.success };
+
+  return (
+    <div className="space-y-6">
+      {/* 2-week calendar mini view */}
+      <div className="rounded-2xl p-4" style={{ background: BRAND.white, border: `2px solid ${BRAND.accentBlue}` }}>
+        <h3 className="text-sm font-bold uppercase tracking-wider mb-3" style={{ color: BRAND.navy }}>2-Week Staffing Overview</h3>
+        <div className="grid grid-cols-7 gap-2">
+          {dayNames.map(d => (
+            <div key={d} className="text-center text-xs font-bold py-1" style={{ color: BRAND.lightBlue }}>{d}</div>
+          ))}
+          {/* Pad start to correct day of week */}
+          {Array.from({ length: calendarDays[0]?.date.getDay() || 0 }).map((_, i) => (
+            <div key={`pad-${i}`}></div>
+          ))}
+          {calendarDays.map(day => {
+            const bg = !day.hasEvents ? BRAND.white : day.hasVacancy ? `${BRAND.danger}15` : `${BRAND.success}15`;
+            const border = !day.hasEvents ? BRAND.accentBlue : day.hasVacancy ? BRAND.danger : BRAND.success;
+            return (
+              <div key={day.dateStr} className="rounded-lg p-2 text-center" style={{ background: bg, border: `2px solid ${border}`, minHeight: 48 }}>
+                <div className="text-xs font-bold" style={{ color: BRAND.navy }}>{day.date.getDate()}</div>
+                {day.dayEvents.length > 0 && (
+                  <div className="text-[10px] font-medium mt-0.5 truncate" style={{ color: day.hasVacancy ? BRAND.danger : BRAND.success }}>
+                    {day.dayEvents.length} event{day.dayEvents.length > 1 ? "s" : ""}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-4 mt-3 text-xs">
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: `${BRAND.danger}30`, border: `1px solid ${BRAND.danger}` }}></span><span style={{ color: BRAND.navy }}>Has vacancies</span></span>
+          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: `${BRAND.success}30`, border: `1px solid ${BRAND.success}` }}></span><span style={{ color: BRAND.navy }}>Fully staffed</span></span>
+        </div>
+      </div>
+
+      {/* Unclaimed shifts list */}
+      <div className="rounded-2xl overflow-hidden" style={{ background: BRAND.white, border: `2px solid ${BRAND.accentBlue}` }}>
+        <div className="px-5 py-3 flex items-center justify-between" style={{ background: `${BRAND.accentBlue}60` }}>
+          <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: BRAND.navy }}>Unclaimed Shifts ({unclaimedShifts.length})</h3>
+        </div>
+        {unclaimedShifts.length === 0 ? (
+          <div className="p-6 text-center">
+            <Check size={32} style={{ color: BRAND.success, margin: "0 auto 8px" }} />
+            <p className="text-sm font-medium" style={{ color: BRAND.navy }}>All shifts are assigned!</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{ borderBottom: `2px solid ${BRAND.accentBlue}` }}>
+                  <th className="text-left py-3 px-4 font-bold text-xs uppercase" style={{ color: BRAND.navy }}>Event</th>
+                  <th className="text-left py-3 px-4 font-bold text-xs uppercase" style={{ color: BRAND.navy }}>Role</th>
+                  <th className="text-left py-3 px-4 font-bold text-xs uppercase" style={{ color: BRAND.navy }}>Date</th>
+                  <th className="text-center py-3 px-4 font-bold text-xs uppercase" style={{ color: BRAND.navy }}>Days Till</th>
+                  <th className="text-center py-3 px-4 font-bold text-xs uppercase" style={{ color: BRAND.navy }}>Importance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unclaimedShifts.map(s => (
+                  <tr key={s.id} className="hover:bg-blue-50 transition" style={{ borderBottom: `1px solid ${BRAND.accentBlue}` }}>
+                    <td className="py-2.5 px-4 font-medium" style={{ color: BRAND.navy }}>{s.eventName}</td>
+                    <td className="py-2.5 px-4" style={{ color: BRAND.navy }}>{s.role}</td>
+                    <td className="py-2.5 px-4" style={{ color: BRAND.lightBlue }}>{s.date}</td>
+                    <td className="py-2.5 px-4 text-center font-bold" style={{ color: s.daysUntil <= 3 ? BRAND.danger : BRAND.navy }}>{s.daysUntil}</td>
+                    <td className="py-2.5 px-4 text-center">
+                      <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ background: `${importanceColors[s.importance]}20`, color: importanceColors[s.importance] }}>
+                        {s.importance}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -2895,7 +3330,7 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
 
       <SectionCard title={isEmployeeOnly ? "Your Availability" : "Select Employee"} icon={Users}>
         {isEmployeeOnly ? (
-          <div className="px-4 py-3 rounded-lg" style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
+          <div className="px-4 py-3 rounded-lg" style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}>
             <span style={{ color: BRAND.text }}>
               {currentEmployee
                 ? `${currentEmployee.first_name} ${currentEmployee.last_name}`
@@ -2920,7 +3355,7 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
         {statusCycle.map((s) => (
           <div key={s} className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-full" style={{ background: statusColors[s].color }} />
-            <span className="text-xs" style={{ color: "rgba(224,230,255,0.7)" }}>{statusColors[s].label}</span>
+            <span className="text-xs" style={{ color: BRAND.lightBlue }}>{statusColors[s].label}</span>
           </div>
         ))}
         <span className="text-xs ml-auto" style={{ color: "rgba(224,230,255,0.4)" }}>Tap a date to cycle status</span>
@@ -2930,7 +3365,7 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
         <SectionCard title="No Upcoming Events" icon={Calendar}>
           <div className="text-center py-8">
             <Calendar size={40} style={{ color: "rgba(224,230,255,0.3)", margin: "0 auto 12px" }} />
-            <p className="text-sm" style={{ color: "rgba(224,230,255,0.5)" }}>
+            <p className="text-sm" style={{ color: BRAND.textLight }}>
               No upcoming events in the system. Availability collection will open when events are added.
             </p>
           </div>
@@ -2945,12 +3380,12 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
               }}>
                 {(evt.event_type || "event").charAt(0).toUpperCase() + (evt.event_type || "event").slice(1)}
               </span>
-              <span className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>
+              <span className="text-xs" style={{ color: BRAND.textLight }}>
                 {new Date(evt.start_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                 {evt.start_date !== evt.end_date && ` – ${new Date(evt.end_date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`}
               </span>
               {evtVenues.length > 0 && (
-                <span className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>
+                <span className="text-xs" style={{ color: BRAND.textLight }}>
                   📍 {evtVenues.map(v => v.name).join(", ")}
                 </span>
               )}
@@ -2976,7 +3411,7 @@ const AvailabilityPage = ({ employees = [], events = [], availability: parentAva
                       <span className="text-sm font-semibold" style={{ color: BRAND.text }}>
                         {dayNames[d.getDay()]}
                       </span>
-                      <span className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>
+                      <span className="text-xs" style={{ color: BRAND.textLight }}>
                         {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                       </span>
                       {isToday && (
@@ -3072,7 +3507,7 @@ const MyShiftsPage = ({ employees = [], events = [], shifts = [], user, location
       <div className="space-y-6">
         <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>My Shifts</h1>
         <SectionCard title="Employee Not Found" icon={AlertCircle}>
-          <p className="text-sm" style={{ color: "rgba(224,230,255,0.7)" }}>
+          <p className="text-sm" style={{ color: BRAND.lightBlue }}>
             No employee profile found for your account ({user?.email}). Please contact an admin to link your account.
           </p>
         </SectionCard>
@@ -3085,7 +3520,7 @@ const MyShiftsPage = ({ employees = [], events = [], shifts = [], user, location
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>My Shifts</h1>
-          <p className="text-sm mt-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+          <p className="text-sm mt-1" style={{ color: BRAND.textMuted }}>
             Welcome, {currentEmployee.first_name}. Here are your assigned shifts.
           </p>
         </div>
@@ -3096,7 +3531,7 @@ const MyShiftsPage = ({ employees = [], events = [], shifts = [], user, location
               onClick={() => setViewMode(mode)}
               className="px-3 py-1.5 rounded-lg text-sm capitalize transition"
               style={{
-                background: viewMode === mode ? `${BRAND.primary}20` : "rgba(255,255,255,0.05)",
+                background: viewMode === mode ? `${BRAND.primary}20` : BRAND.accentBlue,
                 color: viewMode === mode ? BRAND.primary : "rgba(224,230,255,0.6)",
                 border: `1px solid ${viewMode === mode ? BRAND.primary : BRAND.glassBorder}`,
               }}
@@ -3129,7 +3564,7 @@ const MyShiftsPage = ({ employees = [], events = [], shifts = [], user, location
             title={group.event?.name || "Unassigned"}
             icon={Calendar}
           >
-            <div className="mb-3 flex items-center gap-4 text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
+            <div className="mb-3 flex items-center gap-4 text-xs" style={{ color: BRAND.textMuted }}>
               {group.event?.start_date && (
                 <span>{group.event.start_date}{group.event.end_date && group.event.end_date !== group.event.start_date ? ` — ${group.event.end_date}` : ""}</span>
               )}
@@ -3145,7 +3580,7 @@ const MyShiftsPage = ({ employees = [], events = [], shifts = [], user, location
                 <div
                   key={shift.id}
                   className="flex items-center justify-between p-3 rounded-lg"
-                  style={{ background: "rgba(255,255,255,0.05)" }}
+                  style={{ background: BRAND.accentBlue }}
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: `${BRAND.primary}20` }}>
@@ -3158,7 +3593,7 @@ const MyShiftsPage = ({ employees = [], events = [], shifts = [], user, location
                           : "Time TBD"}
                       </p>
                       {shift.role && (
-                        <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>Role: {shift.role}</p>
+                        <p className="text-xs" style={{ color: BRAND.textMuted }}>Role: {shift.role}</p>
                       )}
                     </div>
                   </div>
@@ -3269,13 +3704,13 @@ const PayrollPage = ({ employees = [], events = [], locations = [], shifts = [] 
               <div
                 key={p.id}
                 className="flex items-center justify-between p-3 rounded-lg"
-                style={{ background: "rgba(255,255,255,0.05)" }}
+                style={{ background: BRAND.accentBlue }}
               >
                 <div>
                   <p className="text-sm font-medium" style={{ color: BRAND.text }}>
                     {formatDate(p.date)}
                   </p>
-                  <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>
+                  <p className="text-xs" style={{ color: BRAND.textMuted }}>
                     {p.hours} hours
                   </p>
                 </div>
@@ -3345,7 +3780,7 @@ const ReportsPage = ({ employees = [], events = [], shifts = [], historicSales =
       <SectionCard title="Staff & Shift Trend" icon={TrendingUp}>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={staffTrendData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+            <CartesianGrid strokeDasharray="3 3" stroke={BRAND.accentBlue} />
             <XAxis dataKey="month" stroke={BRAND.text} />
             <YAxis stroke={BRAND.text} />
             <Tooltip contentStyle={{ background: BRAND.glass, border: `1px solid ${BRAND.glassBorder}` }} />
@@ -3501,8 +3936,19 @@ const InventoryProductsPage = ({ products = [], stock = {}, onRefresh }) => {
 
   return (
     <div className="space-y-6">
+      {/* Category tabs spanning full width */}
+      <div className="flex gap-1 p-1 rounded-xl" style={{ background: BRAND.accentBlue }}>
+        {[{ id: "", label: "All" }, { id: "Hoodies", label: "Hoodies" }, { id: "T-Shirts", label: "T-Shirts" }, { id: "Other", label: "Other" }].map(cat => (
+          <button key={cat.id} onClick={() => setFilterCategory(cat.id)}
+            className="flex-1 py-2.5 rounded-lg text-sm font-bold transition"
+            style={{ background: filterCategory === cat.id ? BRAND.navy : "transparent", color: filterCategory === cat.id ? BRAND.white : BRAND.navy }}>
+            {cat.label}
+          </button>
+        ))}
+      </div>
+
       <div className="flex items-center justify-between flex-wrap gap-4">
-        <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Products</h1>
+        <h1 className="text-2xl font-bold" style={{ color: BRAND.navy }}>Products</h1>
         <Btn icon={Plus} onClick={() => { resetForm(); setEditProduct(null); setShowAddModal(true); }}>Add Product</Btn>
       </div>
 
@@ -3513,6 +3959,73 @@ const InventoryProductsPage = ({ products = [], stock = {}, onRefresh }) => {
         <StatCard label="Avg Margin" value={`${avgMargin}%`} icon={TrendingUp} color="primary" />
       </div>
 
+      {/* Charts + Critical Warnings row */}
+      {filtered.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Bar chart — stock by size or color */}
+          <div className="rounded-2xl p-4" style={{ background: BRAND.white, border: `2px solid ${BRAND.accentBlue}` }}>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-bold" style={{ color: BRAND.navy }}>Stock by Size</h4>
+            </div>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={(() => {
+                const sizeMap = {};
+                filtered.forEach(p => { (p.sizes || []).forEach(s => { sizeMap[s] = (sizeMap[s] || 0) + (stock[p.id] || 0); }); });
+                return Object.entries(sizeMap).map(([size, qty]) => ({ size, qty }));
+              })()}>
+                <CartesianGrid strokeDasharray="3 3" stroke={BRAND.accentBlue} />
+                <XAxis dataKey="size" tick={{ fill: BRAND.navy, fontSize: 11 }} />
+                <YAxis tick={{ fill: BRAND.navy, fontSize: 11 }} />
+                <Tooltip />
+                <Bar dataKey="qty" fill={BRAND.navy} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Pie chart — stock distribution */}
+          <div className="rounded-2xl p-4" style={{ background: BRAND.white, border: `2px solid ${BRAND.accentBlue}` }}>
+            <h4 className="text-sm font-bold mb-3" style={{ color: BRAND.navy }}>Stock Distribution</h4>
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={filtered.map(p => ({ name: p.name?.substring(0, 15) || "?", value: stock[p.id] || 0 })).filter(d => d.value > 0)} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                  {filtered.map((_, i) => <Cell key={i} fill={[BRAND.navy, BRAND.lightBlue, BRAND.primary, "#4ade80", "#fbbf24", "#f97316", "#a78bfa", "#ec4899"][i % 8]} />)}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Critical warnings */}
+          <div className="rounded-2xl p-4" style={{ background: BRAND.white, border: `2px solid ${BRAND.accentBlue}` }}>
+            <h4 className="text-sm font-bold mb-3" style={{ color: BRAND.danger }}>Stock Alerts</h4>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {filtered.filter(p => (stock[p.id] || 0) <= 5).sort((a, b) => (stock[a.id] || 0) - (stock[b.id] || 0)).map(p => (
+                <div key={p.id} className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: `${BRAND.danger}08`, border: `1px solid ${BRAND.danger}20` }}>
+                  <span className="text-xs font-semibold" style={{ color: BRAND.navy }}>{p.name}</span>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: (stock[p.id] || 0) === 0 ? `${BRAND.danger}20` : `${BRAND.warning}20`, color: (stock[p.id] || 0) === 0 ? BRAND.danger : BRAND.warning }}>
+                    {stock[p.id] || 0} left
+                  </span>
+                </div>
+              ))}
+              {filtered.filter(p => (stock[p.id] || 0) > 100).map(p => (
+                <div key={`over-${p.id}`} className="flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: `${BRAND.primary}08`, border: `1px solid ${BRAND.primary}20` }}>
+                  <span className="text-xs font-semibold" style={{ color: BRAND.navy }}>{p.name}</span>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: `${BRAND.primary}20`, color: BRAND.navy }}>
+                    Overstocked: {stock[p.id]}
+                  </span>
+                </div>
+              ))}
+              {filtered.filter(p => (stock[p.id] || 0) > 5 && (stock[p.id] || 0) <= 100).length === filtered.length && filtered.length > 0 && (
+                <div className="text-center py-4">
+                  <Check size={24} style={{ color: BRAND.success, margin: "0 auto 4px" }} />
+                  <p className="text-xs font-medium" style={{ color: BRAND.success }}>All stock levels healthy</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex-1 min-w-48">
@@ -3521,19 +4034,10 @@ const InventoryProductsPage = ({ products = [], stock = {}, onRefresh }) => {
             placeholder="Search products..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-4 py-2 rounded-lg text-white focus:outline-none focus:ring-2"
-            style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}
+            className="w-full px-4 py-2 rounded-lg focus:outline-none focus:ring-2"
+            style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}
           />
         </div>
-        <select
-          value={filterCategory}
-          onChange={(e) => setFilterCategory(e.target.value)}
-          className="px-4 py-2 rounded-lg text-white focus:outline-none"
-          style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}
-        >
-          <option value="">All Categories</option>
-          {PRODUCT_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-        </select>
       </div>
 
       {/* Product Grid */}
@@ -3551,34 +4055,34 @@ const InventoryProductsPage = ({ products = [], stock = {}, onRefresh }) => {
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <h3 className="font-semibold text-base" style={{ color: BRAND.text }}>{p.name}</h3>
-                  <p className="text-xs mt-1" style={{ color: "rgba(224,230,255,0.5)" }}>
+                  <p className="text-xs mt-1" style={{ color: BRAND.textLight }}>
                     SKU: {p.sku} &middot; {p.category || "T-Shirts"}
                   </p>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                  <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-blue-50 transition">
                     <Edit2 size={14} style={{ color: BRAND.primary }} />
                   </button>
-                  <button onClick={() => handleToggleStatus(p)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                  <button onClick={() => handleToggleStatus(p)} className="p-1.5 rounded-lg hover:bg-blue-50 transition">
                     {isInactive ? <Eye size={14} style={{ color: BRAND.success }} /> : <EyeOff size={14} style={{ color: BRAND.warning }} />}
                   </button>
-                  <button onClick={() => handleDelete(p.id)} className="p-1.5 rounded-lg hover:bg-white/10 transition">
+                  <button onClick={() => handleDelete(p.id)} className="p-1.5 rounded-lg hover:bg-blue-50 transition">
                     <Trash2 size={14} style={{ color: BRAND.danger }} />
                   </button>
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.04)" }}>
-                  <p className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>Cost</p>
+                <div className="rounded-lg p-2" style={{ background: BRAND.accentBlue }}>
+                  <p className="text-xs" style={{ color: BRAND.textLight }}>Cost</p>
                   <p className="font-semibold text-sm" style={{ color: BRAND.text }}>{currency(p.cost)}</p>
                 </div>
-                <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.04)" }}>
-                  <p className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>Retail</p>
+                <div className="rounded-lg p-2" style={{ background: BRAND.accentBlue }}>
+                  <p className="text-xs" style={{ color: BRAND.textLight }}>Retail</p>
                   <p className="font-semibold text-sm" style={{ color: BRAND.primary }}>{currency(p.retail)}</p>
                 </div>
-                <div className="rounded-lg p-2" style={{ background: "rgba(255,255,255,0.04)" }}>
-                  <p className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>Margin</p>
+                <div className="rounded-lg p-2" style={{ background: BRAND.accentBlue }}>
+                  <p className="text-xs" style={{ color: BRAND.textLight }}>Margin</p>
                   <p className="font-semibold text-sm" style={{ color: BRAND.success }}>{margin}%</p>
                 </div>
               </div>
@@ -3762,9 +4266,9 @@ const InventoryStockPage = ({ products = [], stock = {}, distributions = [], eve
                     <td className="py-3 px-3 text-center font-semibold" style={{ color: lowStock ? BRAND.danger : BRAND.success }}>
                       {onHand} {lowStock && <AlertCircle size={12} className="inline ml-1" />}
                     </td>
-                    <td className="py-3 px-3 text-center" style={{ color: "rgba(224,230,255,0.7)" }}>{distrib}</td>
+                    <td className="py-3 px-3 text-center" style={{ color: BRAND.lightBlue }}>{distrib}</td>
                     <td className="py-3 px-3 text-center" style={{ color: BRAND.success }}>{sold}</td>
-                    <td className="py-3 px-3 text-center" style={{ color: "rgba(224,230,255,0.7)" }}>{returned}</td>
+                    <td className="py-3 px-3 text-center" style={{ color: BRAND.lightBlue }}>{returned}</td>
                     <td className="py-3 px-3 text-center" style={{ color: BRAND.primary }}>{currency(onHand * Number(p.cost))}</td>
                   </tr>
                 );
@@ -3781,8 +4285,8 @@ const InventoryStockPage = ({ products = [], stock = {}, distributions = [], eve
           <select
             value={filterProduct}
             onChange={(e) => setFilterProduct(e.target.value)}
-            className="px-3 py-1.5 rounded-lg text-sm text-white focus:outline-none"
-            style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}
+            className="px-3 py-1.5 rounded-lg text-sm focus:outline-none"
+            style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}
           >
             <option value="">All Products</option>
             {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -3810,10 +4314,10 @@ const InventoryStockPage = ({ products = [], stock = {}, distributions = [], eve
                 return (
                   <tr key={d.id} className="hover:bg-white/5 transition" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
                     <td className="py-3 px-3" style={{ color: BRAND.text }}>{product?.name || "Unknown"}</td>
-                    <td className="py-3 px-3" style={{ color: "rgba(224,230,255,0.7)" }}>{event?.name || "Unknown"}</td>
+                    <td className="py-3 px-3" style={{ color: BRAND.lightBlue }}>{event?.name || "Unknown"}</td>
                     <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{d.qty_sent}</td>
                     <td className="py-3 px-3 text-center" style={{ color: BRAND.success }}>{d.qty_sold || 0}</td>
-                    <td className="py-3 px-3 text-center" style={{ color: "rgba(224,230,255,0.7)" }}>{d.qty_returned || 0}</td>
+                    <td className="py-3 px-3 text-center" style={{ color: BRAND.lightBlue }}>{d.qty_returned || 0}</td>
                     <td className="py-3 px-3 text-center">
                       <span className="text-xs px-2 py-1 rounded-full" style={{ background: `${statusColors[d.status] || BRAND.primary}20`, color: statusColors[d.status] || BRAND.primary }}>
                         {d.status}
@@ -3827,7 +4331,7 @@ const InventoryStockPage = ({ products = [], stock = {}, distributions = [], eve
                               const qty = prompt(`Record sales for ${product?.name}? (max ${remaining})`);
                               if (qty) handleRecordSales(d.id, qty);
                             }}
-                            className="text-xs px-2 py-1 rounded hover:bg-white/10 transition"
+                            className="text-xs px-2 py-1 rounded hover:bg-blue-50 transition"
                             style={{ color: BRAND.success }}
                           >Sold</button>
                           <button
@@ -3835,7 +4339,7 @@ const InventoryStockPage = ({ products = [], stock = {}, distributions = [], eve
                               const qty = prompt(`Return how many ${product?.name}? (max ${remaining})`);
                               if (qty) handleRecordReturn(d.id, qty);
                             }}
-                            className="text-xs px-2 py-1 rounded hover:bg-white/10 transition"
+                            className="text-xs px-2 py-1 rounded hover:bg-blue-50 transition"
                             style={{ color: BRAND.warning }}
                           >Return</button>
                         </div>
@@ -3971,25 +4475,25 @@ const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributio
         <p className="text-xs font-semibold mb-3" style={{ color: BRAND.primary }}>FILTERS & PARAMETERS</p>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <div>
-            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>Product</label>
+            <label className="block text-xs mb-1" style={{ color: BRAND.textMuted }}>Product</label>
             <select value={selectedProduct} onChange={(e) => setSelectedProduct(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-sm text-white focus:outline-none"
-              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
+              className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none"
+              style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}>
               <option value="">All Products</option>
               {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>Event Type</label>
+            <label className="block text-xs mb-1" style={{ color: BRAND.textMuted }}>Event Type</label>
             <select value={selectedEventType} onChange={(e) => setSelectedEventType(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-sm text-white focus:outline-none"
-              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
+              className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none"
+              style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}>
               <option value="">All Types</option>
               {Object.entries(EVENT_TYPE_DEFAULTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+            <label className="block text-xs mb-1" style={{ color: BRAND.textMuted }}>
               Time Range: <span style={{ color: BRAND.primary }}>{dateRange} days</span>
             </label>
             <input type="range" min="7" max="365" step="7" value={dateRange}
@@ -3997,7 +4501,7 @@ const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributio
               className="w-full" />
           </div>
           <div>
-            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+            <label className="block text-xs mb-1" style={{ color: BRAND.textMuted }}>
               Min Sell-Through: <span style={{ color: BRAND.primary }}>{minSellThrough}%</span>
             </label>
             <input type="range" min="0" max="100" step="5" value={minSellThrough}
@@ -4006,7 +4510,7 @@ const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributio
           </div>
         </div>
         <div className="mt-3">
-          <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+          <label className="block text-xs mb-1" style={{ color: BRAND.textMuted }}>
             Min Revenue Threshold: <span style={{ color: BRAND.primary }}>${revenueThreshold.toLocaleString()}</span>
           </label>
           <input type="range" min="0" max="50000" step="500" value={revenueThreshold}
@@ -4029,7 +4533,7 @@ const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributio
             const status = item.daysOfStock <= 7 ? "critical" : item.daysOfStock <= 30 ? "low" : "healthy";
             const statusColor = status === "critical" ? BRAND.danger : status === "low" ? BRAND.warning : BRAND.success;
             return (
-              <div key={item.id} className="rounded-lg p-3" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${BRAND.glassBorder}` }}>
+              <div key={item.id} className="rounded-lg p-3" style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium text-sm" style={{ color: BRAND.text }}>{item.name}</span>
                   <span className="text-xs px-2 py-0.5 rounded-full capitalize" style={{ background: `${statusColor}20`, color: statusColor }}>
@@ -4038,24 +4542,24 @@ const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributio
                 </div>
                 <div className="grid grid-cols-4 gap-1 text-center text-xs">
                   <div>
-                    <p style={{ color: "rgba(224,230,255,0.5)" }}>On Hand</p>
+                    <p style={{ color: BRAND.textLight }}>On Hand</p>
                     <p className="font-semibold" style={{ color: BRAND.text }}>{item.onHand}</p>
                   </div>
                   <div>
-                    <p style={{ color: "rgba(224,230,255,0.5)" }}>Sold</p>
+                    <p style={{ color: BRAND.textLight }}>Sold</p>
                     <p className="font-semibold" style={{ color: BRAND.success }}>{item.totalSold}</p>
                   </div>
                   <div>
-                    <p style={{ color: "rgba(224,230,255,0.5)" }}>Sell %</p>
+                    <p style={{ color: BRAND.textLight }}>Sell %</p>
                     <p className="font-semibold" style={{ color: item.sellThrough >= 60 ? BRAND.success : BRAND.warning }}>{item.sellThrough.toFixed(0)}%</p>
                   </div>
                   <div>
-                    <p style={{ color: "rgba(224,230,255,0.5)" }}>Days Left</p>
+                    <p style={{ color: BRAND.textLight }}>Days Left</p>
                     <p className="font-semibold" style={{ color: statusColor }}>{item.daysOfStock > 365 ? "365+" : item.daysOfStock}</p>
                   </div>
                 </div>
                 {/* Mini progress bar for sell-through */}
-                <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+                <div className="mt-2 h-1.5 rounded-full overflow-hidden" style={{ background: BRAND.accentBlue }}>
                   <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, item.sellThrough)}%`, background: item.sellThrough >= 60 ? BRAND.success : item.sellThrough >= 30 ? BRAND.warning : BRAND.danger }} />
                 </div>
               </div>
@@ -4070,7 +4574,7 @@ const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributio
         {revenueByEvent.length > 0 ? (
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={revenueByEvent} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <CartesianGrid strokeDasharray="3 3" stroke={BRAND.accentBlue} />
               <XAxis dataKey="name" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} angle={-30} textAnchor="end" />
               <YAxis tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
               <Tooltip contentStyle={{ background: BRAND.navy, border: `1px solid ${BRAND.glassBorder}`, borderRadius: 8, color: BRAND.text }} formatter={(v) => [currency(v), "Revenue"]} />
@@ -4119,7 +4623,7 @@ const InventoryAnalyticsPage = ({ historicSales = [], products = [], distributio
           {sellThroughByProduct.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={sellThroughByProduct} layout="vertical" margin={{ top: 10, right: 20, left: 80, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                <CartesianGrid strokeDasharray="3 3" stroke={BRAND.accentBlue} />
                 <XAxis type="number" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
                 <YAxis dataKey="name" type="category" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} width={70} />
                 <Tooltip contentStyle={{ background: BRAND.navy, border: `1px solid ${BRAND.glassBorder}`, borderRadius: 8, color: BRAND.text }} formatter={(v) => [`${v}%`, "Sell-Through"]} />
@@ -4247,24 +4751,24 @@ const InventoryProjectionsPage = ({ events = [], products = [], historicSales = 
         <p className="text-xs font-semibold mb-3" style={{ color: BRAND.primary }}>EVENT PARAMETERS</p>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
           <div>
-            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>Select Existing Event (optional)</label>
+            <label className="block text-xs mb-1" style={{ color: BRAND.textMuted }}>Select Existing Event (optional)</label>
             <select value={selectedEvent} onChange={(e) => setSelectedEvent(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-sm text-white focus:outline-none"
-              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
+              className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none"
+              style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}>
               <option value="">— Custom Parameters —</option>
               {upcomingEvents.map(e => <option key={e.id} value={e.id}>{e.name} ({e.start_date})</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>Event Type</label>
+            <label className="block text-xs mb-1" style={{ color: BRAND.textMuted }}>Event Type</label>
             <select value={eventType} onChange={(e) => setEventType(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg text-sm text-white focus:outline-none"
-              style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
+              className="w-full px-3 py-2 rounded-lg text-sm focus:outline-none"
+              style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}>
               {Object.entries(EVENT_TYPE_DEFAULTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+            <label className="block text-xs mb-1" style={{ color: BRAND.textMuted }}>
               Event Duration: <span style={{ color: BRAND.primary }}>{eventDays} day{eventDays > 1 ? "s" : ""}</span>
             </label>
             <input type="range" min="1" max="10" step="1" value={eventDays}
@@ -4276,7 +4780,7 @@ const InventoryProjectionsPage = ({ events = [], products = [], historicSales = 
         <p className="text-xs font-semibold mb-3 mt-2" style={{ color: BRAND.primary }}>PROJECTION PARAMETERS</p>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <div>
-            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+            <label className="block text-xs mb-1" style={{ color: BRAND.textMuted }}>
               Expected Traffic: <span style={{ color: BRAND.primary }}>{expectedTraffic.toLocaleString()}</span>
             </label>
             <input type="range" min="50" max="5000" step="50" value={expectedTraffic}
@@ -4284,7 +4788,7 @@ const InventoryProjectionsPage = ({ events = [], products = [], historicSales = 
               className="w-full" />
           </div>
           <div>
-            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+            <label className="block text-xs mb-1" style={{ color: BRAND.textMuted }}>
               Growth Factor: <span style={{ color: BRAND.primary }}>{(growthFactor * 100).toFixed(0)}%</span>
             </label>
             <input type="range" min="0.5" max="3.0" step="0.05" value={growthFactor}
@@ -4292,7 +4796,7 @@ const InventoryProjectionsPage = ({ events = [], products = [], historicSales = 
               className="w-full" />
           </div>
           <div>
-            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+            <label className="block text-xs mb-1" style={{ color: BRAND.textMuted }}>
               Sell-Through Override: <span style={{ color: BRAND.primary }}>{sellThroughOverride > 0 ? `${sellThroughOverride}%` : "Auto"}</span>
             </label>
             <input type="range" min="0" max="100" step="5" value={sellThroughOverride}
@@ -4300,7 +4804,7 @@ const InventoryProjectionsPage = ({ events = [], products = [], historicSales = 
               className="w-full" />
           </div>
           <div>
-            <label className="block text-xs mb-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+            <label className="block text-xs mb-1" style={{ color: BRAND.textMuted }}>
               Stock Buffer: <span style={{ color: BRAND.primary }}>{bufferPercent}%</span>
             </label>
             <input type="range" min="0" max="50" step="5" value={bufferPercent}
@@ -4322,7 +4826,7 @@ const InventoryProjectionsPage = ({ events = [], products = [], historicSales = 
         {chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <CartesianGrid strokeDasharray="3 3" stroke={BRAND.accentBlue} />
               <XAxis dataKey="name" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} angle={-25} textAnchor="end" />
               <YAxis tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} />
               <Tooltip contentStyle={{ background: BRAND.navy, border: `1px solid ${BRAND.glassBorder}`, borderRadius: 8, color: BRAND.text }} />
@@ -4518,14 +5022,14 @@ const SalesProjectionsPage = ({ events = [], products = [], historicSales = [], 
           <select
             value={selectedEventType}
             onChange={(e) => setSelectedEventType(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm text-white focus:outline-none"
-            style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}
+            className="px-3 py-2 rounded-lg text-sm focus:outline-none"
+            style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}
           >
             <option value="">All Event Types</option>
             {Object.entries(EVENT_TYPE_DEFAULTS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
-            <span className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>Growth</span>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}>
+            <span className="text-xs" style={{ color: BRAND.textMuted }}>Growth</span>
             <input
               type="range"
               min="0.5"
@@ -4552,7 +5056,7 @@ const SalesProjectionsPage = ({ events = [], products = [], historicSales = [], 
         {chartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={300}>
             <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <CartesianGrid strokeDasharray="3 3" stroke={BRAND.accentBlue} />
               <XAxis dataKey="name" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} angle={-25} textAnchor="end" />
               <YAxis tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
               <Tooltip contentStyle={{ background: BRAND.navy, border: `1px solid ${BRAND.glassBorder}`, borderRadius: 8, color: BRAND.text }} formatter={(v, name) => [name === "units" ? v : currency(v), name === "revenue" ? "Revenue" : name === "profit" ? "Profit" : "Units"]} />
@@ -4571,7 +5075,7 @@ const SalesProjectionsPage = ({ events = [], products = [], historicSales = [], 
         <SectionCard title="Historic vs Projected (by Event Type)" icon={TrendingUp}>
           <ResponsiveContainer width="100%" height={250}>
             <BarChart data={comparisonData} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <CartesianGrid strokeDasharray="3 3" stroke={BRAND.accentBlue} />
               <XAxis dataKey="name" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} />
               <YAxis tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
               <Tooltip contentStyle={{ background: BRAND.navy, border: `1px solid ${BRAND.glassBorder}`, borderRadius: 8, color: BRAND.text }} formatter={(v) => [currency(v)]} />
@@ -4603,7 +5107,7 @@ const SalesProjectionsPage = ({ events = [], products = [], historicSales = [], 
               {filteredProjections.map(p => (
                 <tr key={p.id} className="hover:bg-white/5 transition" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
                   <td className="py-3 px-3 font-medium" style={{ color: BRAND.text }}>{p.name}</td>
-                  <td className="py-3 px-3 text-center text-xs" style={{ color: "rgba(224,230,255,0.7)" }}>{p.start_date}</td>
+                  <td className="py-3 px-3 text-center text-xs" style={{ color: BRAND.lightBlue }}>{p.start_date}</td>
                   <td className="py-3 px-3 text-center">
                     <span className="text-xs px-2 py-1 rounded-full" style={{ background: "rgba(84,205,249,0.15)", color: BRAND.primary }}>
                       {EVENT_TYPE_DEFAULTS[p.eventType]?.label || p.eventType}
@@ -4634,7 +5138,7 @@ const SalesProjectionsPage = ({ events = [], products = [], historicSales = [], 
             const onHand = stock[p.id] || 0;
             const needsRestock = projUnits > onHand;
             return (
-              <div key={p.id} className="rounded-lg p-3" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${BRAND.glassBorder}` }}>
+              <div key={p.id} className="rounded-lg p-3" style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="font-medium text-sm" style={{ color: BRAND.text }}>{p.name}</span>
                   {needsRestock && (
@@ -4643,15 +5147,15 @@ const SalesProjectionsPage = ({ events = [], products = [], historicSales = [], 
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center text-xs">
                   <div>
-                    <p style={{ color: "rgba(224,230,255,0.5)" }}>Proj. Revenue</p>
+                    <p style={{ color: BRAND.textLight }}>Proj. Revenue</p>
                     <p className="font-semibold" style={{ color: BRAND.primary }}>{currency(projRevenue)}</p>
                   </div>
                   <div>
-                    <p style={{ color: "rgba(224,230,255,0.5)" }}>Proj. Units</p>
+                    <p style={{ color: BRAND.textLight }}>Proj. Units</p>
                     <p className="font-semibold" style={{ color: BRAND.text }}>{projUnits}</p>
                   </div>
                   <div>
-                    <p style={{ color: "rgba(224,230,255,0.5)" }}>In Stock</p>
+                    <p style={{ color: BRAND.textLight }}>In Stock</p>
                     <p className="font-semibold" style={{ color: needsRestock ? BRAND.danger : BRAND.success }}>{onHand}</p>
                   </div>
                 </div>
@@ -4747,15 +5251,15 @@ const StaffingProjectionsPage = ({ events = [], employees = [], shifts = [], rol
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Staffing Projections</h1>
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
-          <span className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>Avg Rate</span>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}>
+          <span className="text-xs" style={{ color: BRAND.textMuted }}>Avg Rate</span>
           <input
             type="number"
             placeholder={avgHourlyRate.toFixed(2)}
             value={hourlyOverride}
             onChange={(e) => setHourlyOverride(e.target.value)}
-            className="w-20 px-2 py-1 rounded text-sm text-white text-center focus:outline-none"
-            style={{ background: "rgba(255,255,255,0.08)", border: `1px solid ${BRAND.glassBorder}` }}
+            className="w-20 px-2 py-1 rounded text-sm text-center focus:outline-none"
+            style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}`, color: BRAND.navy }}
           />
           <span className="text-xs" style={{ color: BRAND.primary }}>$/hr</span>
         </div>
@@ -4773,7 +5277,7 @@ const StaffingProjectionsPage = ({ events = [], employees = [], shifts = [], rol
         {gapChartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={gapChartData} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <CartesianGrid strokeDasharray="3 3" stroke={BRAND.accentBlue} />
               <XAxis dataKey="name" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} angle={-25} textAnchor="end" />
               <YAxis tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} />
               <Tooltip contentStyle={{ background: BRAND.navy, border: `1px solid ${BRAND.glassBorder}`, borderRadius: 8, color: BRAND.text }} />
@@ -4793,7 +5297,7 @@ const StaffingProjectionsPage = ({ events = [], employees = [], shifts = [], rol
           {laborByType.length > 0 ? (
             <ResponsiveContainer width="100%" height={250}>
               <BarChart data={laborByType} layout="vertical" margin={{ top: 10, right: 20, left: 80, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                <CartesianGrid strokeDasharray="3 3" stroke={BRAND.accentBlue} />
                 <XAxis type="number" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
                 <YAxis dataKey="name" type="category" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} width={70} />
                 <Tooltip contentStyle={{ background: BRAND.navy, border: `1px solid ${BRAND.glassBorder}`, borderRadius: 8, color: BRAND.text }} formatter={(v) => [currency(v), "Labor Cost"]} />
@@ -4824,9 +5328,9 @@ const StaffingProjectionsPage = ({ events = [], employees = [], shifts = [], rol
                 {staffingNeeds.filter(e => e.gap > 0).length} / {staffingNeeds.length}
               </span>
             </div>
-            <div className="mt-4 p-3 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
-              <p className="text-xs mb-2" style={{ color: "rgba(224,230,255,0.5)" }}>Overall Fill Rate</p>
-              <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+            <div className="mt-4 p-3 rounded-lg" style={{ background: BRAND.accentBlue }}>
+              <p className="text-xs mb-2" style={{ color: BRAND.textLight }}>Overall Fill Rate</p>
+              <div className="w-full h-3 rounded-full overflow-hidden" style={{ background: BRAND.accentBlue }}>
                 <div
                   className="h-full rounded-full transition-all"
                   style={{
@@ -4863,7 +5367,7 @@ const StaffingProjectionsPage = ({ events = [], employees = [], shifts = [], rol
               {staffingNeeds.map(e => (
                 <tr key={e.id} className="hover:bg-white/5 transition" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
                   <td className="py-3 px-3 font-medium" style={{ color: BRAND.text }}>{e.name}</td>
-                  <td className="py-3 px-3 text-center text-xs" style={{ color: "rgba(224,230,255,0.7)" }}>{e.start_date}</td>
+                  <td className="py-3 px-3 text-center text-xs" style={{ color: BRAND.lightBlue }}>{e.start_date}</td>
                   <td className="py-3 px-3 text-center" style={{ color: BRAND.text }}>{e.days}</td>
                   <td className="py-3 px-3 text-center" style={{ color: BRAND.primary }}>{e.neededStaff}</td>
                   <td className="py-3 px-3 text-center" style={{ color: BRAND.success }}>{e.assignedStaff}</td>
@@ -4872,10 +5376,10 @@ const StaffingProjectionsPage = ({ events = [], employees = [], shifts = [], rol
                   </td>
                   <td className="py-3 px-3 text-center">
                     <div className="inline-flex items-center gap-1">
-                      <div className="w-16 h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+                      <div className="w-16 h-2 rounded-full overflow-hidden" style={{ background: BRAND.accentBlue }}>
                         <div className="h-full rounded-full" style={{ width: `${Math.min(100, e.fillRate)}%`, background: e.fillRate >= 100 ? BRAND.success : e.fillRate >= 50 ? BRAND.warning : BRAND.danger }} />
                       </div>
-                      <span className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>{e.fillRate.toFixed(0)}%</span>
+                      <span className="text-xs" style={{ color: BRAND.textMuted }}>{e.fillRate.toFixed(0)}%</span>
                     </div>
                   </td>
                   <td className="py-3 px-3 text-right" style={{ color: BRAND.primary }}>{currency(e.laborCost)}</td>
@@ -5015,8 +5519,8 @@ const EventPnLPage = ({ events = [], products = [], historicSales = [], employee
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Event P&L Estimator</h1>
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BRAND.glassBorder}` }}>
-          <span className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>Growth</span>
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg" style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}>
+          <span className="text-xs" style={{ color: BRAND.textMuted }}>Growth</span>
           <input
             type="range"
             min="0.5"
@@ -5042,7 +5546,7 @@ const EventPnLPage = ({ events = [], products = [], historicSales = [], employee
         {pnlChartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={300}>
             <ComposedChart data={pnlChartData} margin={{ top: 10, right: 10, left: 10, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+              <CartesianGrid strokeDasharray="3 3" stroke={BRAND.accentBlue} />
               <XAxis dataKey="name" tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} angle={-25} textAnchor="end" />
               <YAxis tick={{ fill: "rgba(224,230,255,0.6)", fontSize: 11 }} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
               <Tooltip contentStyle={{ background: BRAND.navy, border: `1px solid ${BRAND.glassBorder}`, borderRadius: 8, color: BRAND.text }} formatter={(v) => [currency(v)]} />
@@ -5099,16 +5603,16 @@ const EventPnLPage = ({ events = [], products = [], historicSales = [], employee
               const typeProfit = typeEvents.reduce((s, e) => s + e.netProfit, 0);
               const typeMargin = typeRevenue > 0 ? (typeProfit / typeRevenue) * 100 : 0;
               return (
-                <div key={type} className="p-3 rounded-lg" style={{ background: "rgba(255,255,255,0.04)" }}>
+                <div key={type} className="p-3 rounded-lg" style={{ background: BRAND.accentBlue }}>
                   <div className="flex items-center justify-between mb-2">
                     <span className="font-medium text-sm" style={{ color: BRAND.text }}>{def.label}</span>
                     <span className="text-sm font-semibold" style={{ color: typeMargin >= 0 ? BRAND.success : BRAND.danger }}>{typeMargin.toFixed(0)}% margin</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span style={{ color: "rgba(224,230,255,0.5)" }}>{typeEvents.length} events</span>
+                    <span style={{ color: BRAND.textLight }}>{typeEvents.length} events</span>
                     <span style={{ color: BRAND.primary }}>{currency(typeRevenue)} rev &rarr; {currency(typeProfit)} profit</span>
                   </div>
-                  <div className="w-full h-2 rounded-full mt-2 overflow-hidden" style={{ background: "rgba(255,255,255,0.1)" }}>
+                  <div className="w-full h-2 rounded-full mt-2 overflow-hidden" style={{ background: BRAND.accentBlue }}>
                     <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, typeMargin))}%`, background: typeMargin >= 30 ? BRAND.success : typeMargin >= 10 ? BRAND.warning : BRAND.danger }} />
                   </div>
                 </div>
@@ -5147,7 +5651,7 @@ const EventPnLPage = ({ events = [], products = [], historicSales = [], employee
                   <td className="py-3 px-2 text-right" style={{ color: BRAND.primary }}>{currency(e.projRevenue)}</td>
                   <td className="py-3 px-2 text-right" style={{ color: BRAND.danger }}>{currency(e.cogs)}</td>
                   <td className="py-3 px-2 text-right" style={{ color: BRAND.warning }}>{currency(e.laborCost)}</td>
-                  <td className="py-3 px-2 text-right" style={{ color: "rgba(224,230,255,0.6)" }}>{currency(e.fixedCosts)}</td>
+                  <td className="py-3 px-2 text-right" style={{ color: BRAND.textMuted }}>{currency(e.fixedCosts)}</td>
                   <td className="py-3 px-2 text-right font-semibold" style={{ color: e.netProfit >= 0 ? BRAND.success : BRAND.danger }}>
                     {currency(e.netProfit)}
                   </td>
@@ -5208,9 +5712,9 @@ const NotificationsPage = ({ notifications = [] }) => {
         {displayNotifs.map((notif) => (
           <div
             key={notif.id}
-            className="p-4 rounded-lg cursor-pointer transition hover:bg-white/10"
+            className="p-4 rounded-lg cursor-pointer transition hover:bg-blue-50"
             style={{
-              background: notif.read ? "rgba(255,255,255,0.02)" : "rgba(84,205,249,0.1)",
+              background: notif.read ? `${BRAND.accentBlue}30` : `${BRAND.primary}20`,
               border: `1px solid ${notif.read ? BRAND.glassBorder : BRAND.primary}`,
             }}
           >
@@ -5219,7 +5723,7 @@ const NotificationsPage = ({ notifications = [] }) => {
                 <p className="font-medium" style={{ color: BRAND.text }}>
                   {notif.title}
                 </p>
-                <p className="text-sm mt-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+                <p className="text-sm mt-1" style={{ color: BRAND.textMuted }}>
                   {notif.message}
                 </p>
               </div>
@@ -5384,7 +5888,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>User Management</h1>
-          <p className="text-sm mt-1" style={{ color: "rgba(224,230,255,0.6)" }}>
+          <p className="text-sm mt-1" style={{ color: BRAND.textMuted }}>
             Create logins, manage access roles, and monitor user activity.
           </p>
         </div>
@@ -5423,7 +5927,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
         {loadingUsers ? (
           <div className="text-center py-8">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-opacity-30" style={{ borderColor: BRAND.primary }}></div>
-            <p className="mt-2 text-sm" style={{ color: "rgba(224,230,255,0.6)" }}>Loading users...</p>
+            <p className="mt-2 text-sm" style={{ color: BRAND.textMuted }}>Loading users...</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -5452,7 +5956,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
                         </span>
                       </div>
                     </td>
-                    <td className="py-3 px-3" style={{ color: "rgba(224,230,255,0.7)" }}>{u.email}</td>
+                    <td className="py-3 px-3" style={{ color: BRAND.lightBlue }}>{u.email}</td>
                     <td className="py-3 px-3 text-center">
                       {u.employee_id ? (
                         <select
@@ -5484,14 +5988,14 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
                         {u.banned ? "Disabled" : "Active"}
                       </span>
                     </td>
-                    <td className="py-3 px-3 text-center text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>
+                    <td className="py-3 px-3 text-center text-xs" style={{ color: BRAND.textLight }}>
                       {u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleDateString("en-CA", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Never"}
                     </td>
                     <td className="py-3 px-3 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => handleSendResetEmail(u.email)}
-                          className="p-1.5 rounded hover:bg-white/10 transition"
+                          className="p-1.5 rounded hover:bg-blue-50 transition"
                           title="Send Password Reset Email"
                           style={{ color: sendingResetEmail === u.email ? "rgba(224,230,255,0.3)" : BRAND.primary }}
                           disabled={sendingResetEmail === u.email}
@@ -5500,7 +6004,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
                         </button>
                         <button
                           onClick={() => { setSelectedUser(u); setShowResetModal(true); }}
-                          className="p-1.5 rounded hover:bg-white/10 transition"
+                          className="p-1.5 rounded hover:bg-blue-50 transition"
                           title="Reset Password Manually"
                           style={{ color: BRAND.warning }}
                         >
@@ -5508,7 +6012,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
                         </button>
                         <button
                           onClick={() => handleToggleAccess(u.id, !u.banned)}
-                          className="p-1.5 rounded hover:bg-white/10 transition"
+                          className="p-1.5 rounded hover:bg-blue-50 transition"
                           title={u.banned ? "Enable User" : "Disable User"}
                           style={{ color: u.banned ? BRAND.success : BRAND.warning }}
                         >
@@ -5535,12 +6039,12 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
             { role: "Team Lead", color: BRAND.warning, perms: "Scheduling, employees, inventory, reports, notifications" },
             { role: "Employee", color: BRAND.primary, perms: "My Shifts, availability, personal dashboard only" },
           ].map(r => (
-            <div key={r.role} className="rounded-lg p-3" style={{ background: "rgba(255,255,255,0.04)", border: `1px solid ${BRAND.glassBorder}` }}>
+            <div key={r.role} className="rounded-lg p-3" style={{ background: BRAND.accentBlue, border: `1px solid ${BRAND.glassBorder}` }}>
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-3 h-3 rounded-full" style={{ background: r.color }}></div>
                 <span className="font-semibold text-sm" style={{ color: BRAND.text }}>{r.role}</span>
               </div>
-              <p className="text-xs" style={{ color: "rgba(224,230,255,0.6)" }}>{r.perms}</p>
+              <p className="text-xs" style={{ color: BRAND.textMuted }}>{r.perms}</p>
             </div>
           ))}
         </div>
@@ -5554,7 +6058,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
             <Input label="Last Name" value={createForm.last_name} onChange={(e) => setCreateForm({ ...createForm, last_name: e.target.value })} placeholder="Doe" />
           </div>
           <Input label="Email" type="email" value={createForm.email} onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })} placeholder="john@collideapparel.com" />
-          <p className="text-xs" style={{ color: "rgba(224,230,255,0.5)" }}>They will receive an email to set their own password.</p>
+          <p className="text-xs" style={{ color: BRAND.textLight }}>They will receive an email to set their own password.</p>
           <Select label="Access Role" value={createForm.app_role} onChange={(e) => setCreateForm({ ...createForm, app_role: e.target.value })} options={[
             { value: "admin", label: "Admin — Full access" },
             { value: "team_lead", label: "Team Lead — Scheduling & inventory" },
@@ -5573,7 +6077,7 @@ const UserManagementPage = ({ user, employees = [], onRefresh }) => {
       {/* Reset Password Modal */}
       <Modal isOpen={showResetModal} onClose={() => { setShowResetModal(false); setSelectedUser(null); setResetPassword(""); }} title="Reset Password" size="sm">
         <div className="space-y-3">
-          <p className="text-sm" style={{ color: "rgba(224,230,255,0.7)" }}>
+          <p className="text-sm" style={{ color: BRAND.lightBlue }}>
             Reset password for <strong style={{ color: BRAND.text }}>{selectedUser?.email}</strong>
           </p>
           <Input label="New Password" type="text" value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} placeholder="Min 6 characters" />
@@ -6012,48 +6516,659 @@ export default function App() {
       }}>
         <div style={{ fontSize: 48, marginBottom: 16 }}>🔒</div>
         <h2 style={{ color: BRAND.text, marginBottom: 8, fontSize: 20 }}>Access Restricted</h2>
-        <p style={{ color: "rgba(224,230,255,0.6)", fontSize: 14, lineHeight: 1.5 }}>
+        <p style={{ color: BRAND.textMuted, fontSize: 14, lineHeight: 1.5 }}>
           You don't have permission to view this page. Contact your admin if you think this is a mistake.
         </p>
       </div>
     </div>
   );
 
-  const renderPage = () => {
-    // Role guard — block access to pages the user's role can't see
-    if (!hasPageAccess(currentNav.page)) {
-      return <AccessDenied />;
-    }
+  // ── Section Wrapper ──
+  const DashSectionWrap = ({ title, icon: Icon, children, large }) => (
+    <div className="rounded-2xl overflow-hidden" style={{ background: BRAND.white, border: `2px solid ${BRAND.accentBlue}`, minHeight: large ? 520 : 340 }}>
+      <div className="px-5 py-3 flex items-center gap-2 border-b" style={{ borderColor: BRAND.accentBlue, background: `${BRAND.accentBlue}60` }}>
+        {Icon && <Icon size={18} style={{ color: BRAND.navy }} />}
+        <h3 className="text-base font-semibold" style={{ color: BRAND.navy }}>{title}</h3>
+      </div>
+      <div className="p-0">{children}</div>
+    </div>
+  );
 
+  // ── User Menu State ──
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [hoveredFlyout, setHoveredFlyout] = useState(null);
+  const flyoutTimeout = useRef(null);
+
+  // Close user menu when clicking outside (must be before any conditional returns to satisfy React hooks rules)
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const close = (e) => {
+      if (!e.target.closest("[data-user-menu]")) setUserMenuOpen(false);
+    };
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [userMenuOpen]);
+
+  const currentEmployee = employees.find(e => e.email === user?.email);
+  const displayName = currentEmployee ? (currentEmployee.name || `${currentEmployee.first_name || ""} ${currentEmployee.last_name || ""}`.trim()) : user?.email?.split("@")[0] || "User";
+
+  // ── Staffing Page (single page, Scheduling + Assignment + Staffing Analytics tabs) ──
+  const SchedulingPage = () => {
+    return (
+      <EventsPage events={events} employees={employees} shifts={shifts} locations={locations} venues={venues} eventVenues={eventVenues} availability={availability} employeeSkills={employeeSkills} skills={skills} roleRequirements={roleRequirements} onRefresh={loadData} />
+    );
+  };
+
+  // ── Staffing Dashboard (3-column snapshot landing) ──
+  const StaffingDashboardPage = () => {
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+    const upcomingEvents = events.filter(e => e.end_date >= today).sort((a, b) => a.start_date.localeCompare(b.start_date));
+
+    // Count upcoming shifts
+    const totalUpcomingShifts = shifts.filter(s => {
+      const ev = events.find(e => e.id === s.event_id);
+      return ev && ev.end_date >= today;
+    }).length;
+
+    // Build unclaimed shifts list
+    const unclaimedShifts = (() => {
+      const result = [];
+      upcomingEvents.forEach(event => {
+        const evReqs = roleRequirements.filter(r => r.event_id === event.id);
+        const evShifts = shifts.filter(s => s.event_id === event.id && s.employee_id);
+        const filledRoles = {};
+        evShifts.forEach(s => { filledRoles[s.role] = (filledRoles[s.role] || 0) + 1; });
+        evReqs.forEach(req => {
+          const role = req.role_name || "Unspecified";
+          const needed = req.qty_needed || 1;
+          const filled = filledRoles[role] || 0;
+          const open = needed - filled;
+          if (open > 0) {
+            const daysUntil = Math.max(0, Math.ceil((new Date(event.start_date) - now) / (1000 * 60 * 60 * 24)));
+            for (let i = 0; i < open; i++) {
+              result.push({ id: `${event.id}-${role}-${i}`, eventName: event.name, role, date: event.start_date, daysUntil });
+            }
+          }
+        });
+      });
+      return result.sort((a, b) => a.daysUntil - b.daysUntil);
+    })();
+
+    // YTD payroll estimate (hours × rate from shifts)
+    const currentYear = now.getFullYear();
+    const ytdPayroll = employees.reduce((total, emp) => {
+      const empShifts = shifts.filter(s => s.employee_id === emp.id && s.shift_date && s.shift_date.startsWith(String(currentYear)));
+      const hours = empShifts.reduce((sum, s) => {
+        if (!s.start_time || !s.end_time) return sum + 8;
+        const start = new Date(`2000-01-01T${s.start_time}`);
+        const end = new Date(`2000-01-01T${s.end_time}`);
+        return sum + Math.max(0, (end - start) / 3600000);
+      }, 0);
+      return total + hours * (emp.hourly_rate || 20);
+    }, 0);
+
+    // Monthly wage data for line chart (Jan-Dec of current year)
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const wageData = monthNames.map((name, idx) => {
+      const monthStr = `${currentYear}-${String(idx + 1).padStart(2, "0")}`;
+      const monthPayroll = employees.reduce((total, emp) => {
+        const empShifts = shifts.filter(s => s.employee_id === emp.id && s.shift_date && s.shift_date.startsWith(monthStr));
+        const hours = empShifts.reduce((sum, s) => {
+          if (!s.start_time || !s.end_time) return sum + 8;
+          const start = new Date(`2000-01-01T${s.start_time}`);
+          const end = new Date(`2000-01-01T${s.end_time}`);
+          return sum + Math.max(0, (end - start) / 3600000);
+        }, 0);
+        return total + hours * (emp.hourly_rate || 20);
+      }, 0);
+      const isFuture = idx > now.getMonth();
+      return { name, wages: monthPayroll, projected: isFuture ? Math.max(monthPayroll, ytdPayroll / Math.max(1, now.getMonth() + 1)) : null };
+    });
+
+    // Projected payroll for next 2 months
+    const avgMonthly = ytdPayroll / Math.max(1, now.getMonth() + 1);
+    const nextMonth1 = monthNames[(now.getMonth() + 1) % 12];
+    const nextMonth2 = monthNames[(now.getMonth() + 2) % 12];
+
+    // Per-event shift stats for scheduling card
+    const eventShiftStats = upcomingEvents.slice(0, 6).map(evt => {
+      const evShifts = shifts.filter(s => s.event_id === evt.id);
+      const totalShifts = evShifts.length;
+      const claimed = evShifts.filter(s => s.employee_id).length;
+      const evReqs = roleRequirements.filter(r => r.event_id === evt.id);
+      const totalNeeded = evReqs.reduce((sum, r) => sum + (r.qty_needed || 1), 0);
+      const available = Math.max(0, totalNeeded - claimed);
+      return { ...evt, totalShifts: Math.max(totalShifts, totalNeeded), claimed, available };
+    });
+
+    return (
+      <div className="space-y-5">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: BRAND.navy }}>Staffing</h1>
+          <p className="text-sm mt-1 font-medium" style={{ color: BRAND.lightBlue }}>Overview of scheduling, assignments, and analytics.</p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5" style={{ minHeight: "calc(100vh - 200px)" }}>
+
+          {/* ── SCHEDULING CARD ── */}
+          <div className="rounded-2xl flex flex-col overflow-hidden transition-all duration-300 group cursor-pointer hover:shadow-[0_0_24px_rgba(0,57,107,0.25)]"
+            onClick={() => handleNavigate({ section: "scheduling", page: "scheduling-cal" })}
+            style={{ background: BRAND.white, border: `2px solid ${BRAND.navy}` }}>
+            {/* Blue header */}
+            <div className="px-5 py-4 text-center" style={{ background: BRAND.navy }}>
+              <h2 className="text-lg font-bold uppercase tracking-wider" style={{ color: BRAND.white }}>Scheduling</h2>
+            </div>
+            {/* Content — events with shift breakdown */}
+            <div className="flex-1 flex flex-col px-5 pt-4 pb-3">
+              <div className="space-y-2 overflow-y-auto" style={{ maxHeight: "34vh" }}>
+                {eventShiftStats.length === 0 ? (
+                  <div className="text-center py-6">
+                    <Calendar size={28} style={{ color: BRAND.lightBlue, margin: "0 auto 6px" }} />
+                    <p className="text-xs font-medium" style={{ color: BRAND.lightBlue }}>No upcoming events</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Column headers */}
+                    <div className="flex items-center gap-3 px-3 pb-1" style={{ borderBottom: `1px solid ${BRAND.accentBlue}` }}>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: BRAND.lightBlue }}>Event</div>
+                      </div>
+                      <div className="text-center" style={{ width: 52 }}>
+                        <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: BRAND.lightBlue }}>Total</div>
+                      </div>
+                      <div className="text-center" style={{ width: 58 }}>
+                        <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: BRAND.lightBlue }}>Claimed</div>
+                      </div>
+                      <div className="text-center" style={{ width: 50 }}>
+                        <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: BRAND.lightBlue }}>Open</div>
+                      </div>
+                    </div>
+                    {eventShiftStats.map(evt => (
+                      <div key={evt.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg" style={{ background: `${BRAND.accentBlue}60` }}>
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: BRAND.primary }}></div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-semibold truncate" style={{ color: BRAND.navy }}>{evt.name}</div>
+                          <div className="text-[11px]" style={{ color: BRAND.lightBlue }}>{evt.start_date} — {evt.end_date}</div>
+                        </div>
+                        <div className="text-center" style={{ width: 52 }}>
+                          <div className="text-sm font-black" style={{ color: BRAND.navy }}>{evt.totalShifts}</div>
+                        </div>
+                        <div className="text-center" style={{ width: 58 }}>
+                          <div className="text-sm font-black" style={{ color: BRAND.success }}>{evt.claimed}</div>
+                        </div>
+                        <div className="text-center" style={{ width: 50 }}>
+                          <div className="text-sm font-black" style={{ color: evt.available > 0 ? BRAND.danger : BRAND.navy }}>{evt.available}</div>
+                        </div>
+                      </div>
+                    ))}
+                    {upcomingEvents.length > 6 && (
+                      <p className="text-xs text-center pt-1" style={{ color: BRAND.lightBlue }}>+{upcomingEvents.length - 6} more</p>
+                    )}
+                  </>
+                )}
+              </div>
+              {/* Total shifts summary */}
+              <div className="text-center py-3 mt-2" style={{ borderTop: `1px solid ${BRAND.accentBlue}` }}>
+                <div className="text-4xl font-black" style={{ color: BRAND.navy, lineHeight: 1 }}>{totalUpcomingShifts}</div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider mt-1.5" style={{ color: BRAND.lightBlue }}>Total Shifts</div>
+              </div>
+            </div>
+            {/* Parallel Enter button pinned to bottom */}
+            <div className="px-5 pb-5 pt-2 mt-auto flex justify-center">
+              <div className="flex items-center justify-center rounded-xl font-bold text-sm uppercase tracking-wider transition-all group-hover:shadow-lg group-hover:scale-105"
+                style={{ width: "60%", paddingTop: "1.25rem", paddingBottom: "1.25rem", background: BRAND.navy, color: BRAND.white }}>
+                Enter Scheduling
+              </div>
+            </div>
+          </div>
+
+          {/* ── ASSIGNMENT CARD ── */}
+          <div className="rounded-2xl flex flex-col overflow-hidden transition-all duration-300 group cursor-pointer hover:shadow-[0_0_24px_rgba(0,57,107,0.25)]"
+            onClick={() => handleNavigate({ section: "scheduling", page: "assignment" })}
+            style={{ background: BRAND.white, border: `2px solid ${BRAND.navy}` }}>
+            {/* Blue header */}
+            <div className="px-5 py-4 text-center" style={{ background: BRAND.navy }}>
+              <h2 className="text-lg font-bold uppercase tracking-wider" style={{ color: BRAND.white }}>Assignment</h2>
+            </div>
+            {/* Content — unclaimed shifts */}
+            <div className="flex-1 flex flex-col px-5 pt-4 pb-3">
+              {unclaimedShifts.length > 0 && (
+                <div className="text-center mb-3">
+                  <span className="px-3 py-1 rounded-full text-xs font-bold" style={{ background: `${BRAND.danger}15`, color: BRAND.danger }}>{unclaimedShifts.length} open shift{unclaimedShifts.length !== 1 ? "s" : ""}</span>
+                </div>
+              )}
+              <div className="space-y-1.5 overflow-y-auto" style={{ maxHeight: "34vh" }}>
+                {unclaimedShifts.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Check size={36} style={{ color: BRAND.success, margin: "0 auto 8px" }} />
+                    <p className="text-sm font-semibold" style={{ color: BRAND.navy }}>All shifts assigned!</p>
+                    <p className="text-xs mt-1" style={{ color: BRAND.lightBlue }}>No open positions to fill.</p>
+                  </div>
+                ) : unclaimedShifts.map(s => (
+                  <div key={s.id} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background: `${BRAND.accentBlue}40` }}>
+                    <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: s.daysUntil <= 3 ? BRAND.danger : s.daysUntil <= 7 ? "#f97316" : BRAND.warning }}></div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold truncate" style={{ color: BRAND.navy }}>{s.role}</div>
+                      <div className="text-[11px]" style={{ color: BRAND.lightBlue }}>{s.eventName}</div>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="text-xs font-bold" style={{ color: s.daysUntil <= 3 ? BRAND.danger : BRAND.navy }}>{s.daysUntil}d</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Parallel Enter button pinned to bottom */}
+            <div className="px-5 pb-5 pt-2 mt-auto flex justify-center">
+              <div className="flex items-center justify-center rounded-xl font-bold text-sm uppercase tracking-wider transition-all group-hover:shadow-lg group-hover:scale-105"
+                style={{ width: "60%", paddingTop: "1.25rem", paddingBottom: "1.25rem", background: BRAND.navy, color: BRAND.white }}>
+                Enter Assignment
+              </div>
+            </div>
+          </div>
+
+          {/* ── STAFFING ANALYTICS CARD ── */}
+          <div className="rounded-2xl flex flex-col overflow-hidden transition-all duration-300 group cursor-pointer hover:shadow-[0_0_24px_rgba(0,57,107,0.25)]"
+            onClick={() => handleNavigate({ section: "scheduling", page: "staffing-analytics" })}
+            style={{ background: BRAND.white, border: `2px solid ${BRAND.navy}` }}>
+            {/* Blue header */}
+            <div className="px-5 py-4 text-center" style={{ background: BRAND.navy }}>
+              <h2 className="text-lg font-bold uppercase tracking-wider" style={{ color: BRAND.white }}>Staffing Analytics</h2>
+            </div>
+            {/* Content — payroll stats + chart */}
+            <div className="flex-1 flex flex-col px-5 pt-4 pb-3">
+              {/* YTD + Projected */}
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="rounded-xl p-3 text-center" style={{ background: `${BRAND.accentBlue}60` }}>
+                  <div className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: BRAND.lightBlue }}>YTD Payroll</div>
+                  <div className="text-xl font-black" style={{ color: BRAND.navy }}>${(ytdPayroll / 1000).toFixed(1)}k</div>
+                </div>
+                <div className="rounded-xl p-3 text-center" style={{ background: `${BRAND.accentBlue}60` }}>
+                  <div className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: BRAND.lightBlue }}>Projected ({nextMonth1}–{nextMonth2})</div>
+                  <div className="text-xl font-black" style={{ color: BRAND.navy }}>${(avgMonthly * 2 / 1000).toFixed(1)}k</div>
+                </div>
+              </div>
+              {/* 12-month chart */}
+              <div className="rounded-xl p-3" style={{ background: `${BRAND.accentBlue}40` }}>
+                <div className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: BRAND.lightBlue }}>Wages Paid — {currentYear}</div>
+                <ResponsiveContainer width="100%" height={140}>
+                  <AreaChart data={wageData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={BRAND.accentBlue} />
+                    <XAxis dataKey="name" tick={{ fill: BRAND.navy, fontSize: 9 }} />
+                    <YAxis tick={{ fill: BRAND.navy, fontSize: 9 }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+                    <Tooltip formatter={(v) => [`$${Number(v).toFixed(2)}`, "Wages"]} />
+                    <Area type="monotone" dataKey="wages" stroke={BRAND.navy} fill={`${BRAND.navy}20`} strokeWidth={2} />
+                    <Area type="monotone" dataKey="projected" stroke={BRAND.lightBlue} fill={`${BRAND.lightBlue}15`} strokeWidth={2} strokeDasharray="4 4" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+            {/* Parallel Enter button pinned to bottom */}
+            <div className="px-5 pb-5 pt-2 mt-auto flex justify-center">
+              <div className="flex items-center justify-center rounded-xl font-bold text-sm uppercase tracking-wider transition-all group-hover:shadow-lg group-hover:scale-105"
+                style={{ width: "60%", paddingTop: "1.25rem", paddingBottom: "1.25rem", background: BRAND.navy, color: BRAND.white }}>
+                Enter Staff Analytics
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    );
+  };
+
+  // ── Employees Page (Directory left, Payroll right, single page) ──
+  const EmployeesPage = () => (
+    <div className="space-y-6">
+      <DirectorySkillsPage employees={employees} employeeSkills={employeeSkills} skills={skills} onRefresh={loadData} />
+    </div>
+  );
+
+  // ── Gateway Dashboard (big buttons + upcoming events) ──
+  const GatewayDashboard = () => {
+    const now = new Date().toISOString().split("T")[0];
+    const upcoming = events.filter(e => e.end_date >= now).sort((a, b) => a.start_date.localeCompare(b.start_date)).slice(0, 5);
+    const gateways = [
+      { id: "scheduling", label: "Staffing", icon: Calendar, desc: "Events, shifts & assignments", color: BRAND.primary },
+      { id: "employees", label: "Employees", icon: Users, desc: "Directory & payroll", color: BRAND.lightBlue },
+      { id: "inventory", label: "Inventory", icon: Package, desc: "Products & stock", color: BRAND.navy },
+      { id: "analytics", label: "Analytics", icon: BarChart3, desc: "Reports, forecasts & P&L", color: BRAND.lightBlue },
+    ];
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: BRAND.navy }}>Dashboard</h1>
+          <p className="text-sm mt-1 font-medium" style={{ color: BRAND.lightBlue }}>Welcome back. Here's your quick overview.</p>
+        </div>
+        {/* Upcoming events snapshot */}
+        {upcoming.length > 0 && (
+          <div className="rounded-2xl p-5" style={{ background: BRAND.white, border: `2px solid ${BRAND.accentBlue}` }}>
+            <h3 className="text-sm font-bold mb-3 uppercase tracking-wider" style={{ color: BRAND.navy }}>Upcoming Events</h3>
+            <div className="flex flex-wrap gap-3">
+              {upcoming.map(e => (
+                <div key={e.id} className="px-4 py-2.5 rounded-xl" style={{ background: `${BRAND.accentBlue}80`, border: `1px solid ${BRAND.accentBlue}` }}>
+                  <div className="text-sm font-semibold" style={{ color: BRAND.navy }}>{e.name}</div>
+                  <div className="text-xs font-medium" style={{ color: BRAND.lightBlue }}>{e.start_date}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Gateway buttons */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {gateways.map(g => (
+            <button key={g.id} onClick={() => {
+              if (g.id === "scheduling") handleNavigate({ section: "scheduling", page: "staffing-dashboard" });
+              else if (g.id === "employees") handleNavigate({ section: "employees", page: "employees-dash" });
+              else if (g.id === "analytics") handleNavigate({ section: "analytics", page: "analytics" });
+              else if (g.id === "inventory") handleNavigate({ section: "inventory", page: "inv-dashboard" });
+              else handleNavigate({ section: g.id, page: null });
+            }}
+              className="flex flex-col items-center gap-3 p-6 rounded-2xl transition hover:scale-105 cursor-pointer text-center"
+              style={{ background: BRAND.white, border: `2px solid ${BRAND.accentBlue}`, boxShadow: "0 2px 12px rgba(0,57,107,0.06)" }}>
+              <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: BRAND.navy }}>
+                <g.icon size={26} style={{ color: BRAND.white }} />
+              </div>
+              <div>
+                <div className="text-sm font-bold" style={{ color: BRAND.navy }}>{g.label}</div>
+                <div className="text-xs mt-0.5 font-medium" style={{ color: BRAND.lightBlue }}>{g.desc}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+        {/* Original dashboard stats below */}
+        <DashboardPage employees={employees} events={events} locations={locations} shifts={shifts} availability={availability} products={products} stock={stock} historicSales={historicSales} />
+      </div>
+    );
+  };
+
+  // ── Inventory Landing Dashboard ──
+  const InventoryDashboardPage = () => {
+    // Placeholder for last inventory update log
+    const lastUpdate = { user: "—", time: "No updates yet" };
+    const totalProducts = products.length;
+    const totalStockUnits = Object.values(stock).reduce((sum, s) => sum + (s.on_hand || 0), 0);
+
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: BRAND.navy }}>Inventory</h1>
+          <p className="text-sm mt-1 font-medium" style={{ color: BRAND.lightBlue }}>Snapshot, entry, and quick links.</p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          {/* ── INVENTORY SNAPSHOT CARD ── */}
+          <div className="rounded-2xl p-6 cursor-pointer transition-all duration-300 group hover:shadow-[0_0_24px_rgba(0,57,107,0.25)]"
+            onClick={() => handleNavigate({ section: "inventory", page: "products" })}
+            style={{ background: BRAND.white, border: `2px solid ${BRAND.navy}` }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: BRAND.navy }}>Inventory Snapshot</h3>
+              <span className="text-xs font-semibold cursor-pointer hover:underline" style={{ color: BRAND.lightBlue }}>Enter Inventory &rarr;</span>
+            </div>
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <StatCard icon={Package} label="Total Products" value={totalProducts} color="primary" />
+              <StatCard icon={List} label="Units On Hand" value={totalStockUnits} color="success" />
+            </div>
+            <div className="rounded-xl p-4" style={{ background: BRAND.accentBlue }}>
+              <ResponsiveContainer width="100%" height={180}>
+                <BarChart data={products.slice(0, 8).map(p => ({ name: p.name?.substring(0, 12) || "?", qty: stock[p.id]?.on_hand || 0 }))}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={BRAND.accentBlue} />
+                  <XAxis dataKey="name" tick={{ fill: BRAND.navy, fontSize: 10 }} />
+                  <YAxis tick={{ fill: BRAND.navy, fontSize: 10 }} />
+                  <Tooltip />
+                  <Bar dataKey="qty" fill={BRAND.navy} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="w-full mt-4 py-3 rounded-xl font-bold text-sm text-center transition group-hover:scale-105 group-hover:shadow-lg"
+              style={{ background: BRAND.navy, color: BRAND.white }}>
+              Enter Inventory
+            </div>
+          </div>
+
+          {/* ── RIGHT COLUMN: Update Log + Analytics + Projections ── */}
+          <div className="space-y-6">
+
+            {/* LAST INVENTORY UPDATE CARD */}
+            <div className="rounded-2xl p-6 transition-all duration-300 hover:shadow-[0_0_24px_rgba(0,57,107,0.25)]"
+              style={{ background: BRAND.white, border: `2px solid ${BRAND.navy}` }}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: BRAND.navy }}>Last Inventory Update</h3>
+                <span className="text-xs font-semibold cursor-pointer hover:underline" style={{ color: BRAND.lightBlue }}>View Full Log &rarr;</span>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: BRAND.accentBlue }}>
+                  <Clock size={20} style={{ color: BRAND.navy }} />
+                </div>
+                <div>
+                  <div className="font-semibold text-sm" style={{ color: BRAND.navy }}>{lastUpdate.user}</div>
+                  <div className="text-xs" style={{ color: BRAND.lightBlue }}>{lastUpdate.time}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* ANALYTICS CARD */}
+            <div className="rounded-2xl p-6 transition-all duration-300 hover:shadow-[0_0_24px_rgba(0,57,107,0.25)]"
+              style={{ background: BRAND.white, border: `2px solid ${BRAND.navy}` }}>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: BRAND.navy }}>
+                    <BarChart3 size={20} style={{ color: BRAND.white }} />
+                  </div>
+                  <div>
+                    <div className="font-bold text-sm" style={{ color: BRAND.navy }}>Analytics</div>
+                    <div className="text-xs" style={{ color: BRAND.lightBlue }}>Sales data & trends</div>
+                  </div>
+                </div>
+                <span onClick={(e) => { e.stopPropagation(); handleNavigate({ section: "inventory", page: "inv-analytics" }); }}
+                  className="text-xs font-semibold cursor-pointer hover:underline" style={{ color: BRAND.lightBlue }}>Enter Analytics & Projection &rarr;</span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button onClick={() => {}} className="px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition hover:opacity-90 hover:shadow-md"
+                  style={{ background: BRAND.navy, color: BRAND.white }}>
+                  Run Reports
+                </button>
+                <button onClick={() => {}} className="px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition hover:opacity-90 hover:shadow-md"
+                  style={{ background: BRAND.navy, color: BRAND.white }}>
+                  Run Inventory Analysis
+                </button>
+              </div>
+            </div>
+
+            {/* PROJECTIONS CARD */}
+            <div className="rounded-2xl p-6 transition-all duration-300 hover:shadow-[0_0_24px_rgba(0,57,107,0.25)]"
+              style={{ background: BRAND.white, border: `2px solid ${BRAND.navy}` }}>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: BRAND.navy }}>
+                    <TrendingUp size={20} style={{ color: BRAND.white }} />
+                  </div>
+                  <div>
+                    <div className="font-bold text-sm" style={{ color: BRAND.navy }}>Projections</div>
+                    <div className="text-xs" style={{ color: BRAND.lightBlue }}>Forecast & planning</div>
+                  </div>
+                </div>
+                <span onClick={(e) => { e.stopPropagation(); handleNavigate({ section: "inventory", page: "inv-projections" }); }}
+                  className="text-xs font-semibold cursor-pointer hover:underline" style={{ color: BRAND.lightBlue }}>Enter Projections &rarr;</span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button onClick={() => {}} className="px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition hover:opacity-90 hover:shadow-md"
+                  style={{ background: BRAND.navy, color: BRAND.white }}>
+                  Run Projection for New Event
+                </button>
+                <button onClick={() => {}} className="px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition hover:opacity-90 hover:shadow-md"
+                  style={{ background: BRAND.navy, color: BRAND.white }}>
+                  Add Data to Inventory Projection Model
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Analytics Page (Reports + Sales Forecast + Event P&L) ──
+  const AnalyticsPage = () => {
+    const [analyticsTab, setAnalyticsTab] = useState("reports"); // reports | sales-forecast | event-pnl
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold" style={{ color: BRAND.navy }}>Analytics</h1>
+        <div className="grid grid-cols-3 gap-0 rounded-xl overflow-hidden" style={{ border: `2px solid ${BRAND.accentBlue}` }}>
+          {[{ id: "reports", label: "Reports", icon: FileText }, { id: "sales-forecast", label: "Sales Forecast", icon: DollarSign }, { id: "event-pnl", label: "Event P&L", icon: TrendingUp }].map(t => (
+            <button key={t.id} onClick={() => setAnalyticsTab(t.id)}
+              className="flex items-center justify-center gap-2 py-4 text-sm font-bold uppercase tracking-wider transition-all"
+              style={{
+                background: analyticsTab === t.id ? BRAND.navy : BRAND.white,
+                color: analyticsTab === t.id ? BRAND.white : BRAND.navy,
+                borderRight: t.id !== "event-pnl" ? `1px solid ${BRAND.accentBlue}` : "none",
+              }}>
+              <t.icon size={18} /> {t.label}
+            </button>
+          ))}
+        </div>
+        {analyticsTab === "reports" && (
+          <>
+            <div className="flex flex-wrap gap-3 mb-4">
+              <button onClick={() => {}} className="px-5 py-3 rounded-xl font-bold text-sm uppercase tracking-wider transition hover:opacity-90 hover:shadow-md"
+                style={{ background: BRAND.navy, color: BRAND.white }}>
+                View Inventory Reports
+              </button>
+            </div>
+            <ReportsPage employees={employees} events={events} shifts={shifts} historicSales={historicSales} products={products} />
+          </>
+        )}
+        {analyticsTab === "sales-forecast" && (
+          <>
+            <div className="flex flex-wrap gap-3 mb-4">
+              <button onClick={() => {}} className="px-5 py-3 rounded-xl font-bold text-sm uppercase tracking-wider transition hover:opacity-90 hover:shadow-md"
+                style={{ background: BRAND.navy, color: BRAND.white }}>
+                Project Future Event Revenue
+              </button>
+              <button onClick={() => {}} className="px-5 py-3 rounded-xl font-bold text-sm uppercase tracking-wider transition hover:opacity-90 hover:shadow-md"
+                style={{ background: BRAND.navy, color: BRAND.white }}>
+                Project Future Event Inventory
+              </button>
+              <button onClick={() => {}} className="px-5 py-3 rounded-xl font-bold text-sm uppercase tracking-wider transition hover:opacity-90 hover:shadow-md"
+                style={{ background: BRAND.lightBlue, color: BRAND.white }}>
+                Update Projection Model
+              </button>
+            </div>
+            <SalesProjectionsPage events={events} products={products} historicSales={historicSales} stock={stock} distributions={distributions} />
+          </>
+        )}
+        {analyticsTab === "event-pnl" && (
+          <EventPnLPage events={events} products={products} historicSales={historicSales} employees={employees} shifts={shifts} stock={stock} roleRequirements={roleRequirements} distributions={distributions} />
+        )}
+      </div>
+    );
+  };
+
+  // ── Inventory Dashboard (legacy) ──
+  const InventoryDash = () => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Inventory</h1>
+        <p className="text-sm mt-1" style={{ color: BRAND.textMuted }}>Products, stock levels, analytics, and projections.</p>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <DashSectionWrap title="Products" icon={Package}>
+          <InventoryProductsPage products={products} stock={stock} onRefresh={loadData} />
+        </DashSectionWrap>
+        <DashSectionWrap title="Stock & Distribution" icon={List}>
+          <InventoryStockPage products={products} stock={stock} distributions={distributions} events={events} onRefresh={loadData} />
+        </DashSectionWrap>
+      </div>
+      <DashSectionWrap title="Analytics" icon={BarChart3}>
+        <InventoryAnalyticsPage historicSales={historicSales} products={products} distributions={distributions} stock={stock} events={events} />
+      </DashSectionWrap>
+      <DashSectionWrap title="Projections" icon={TrendingUp}>
+        <InventoryProjectionsPage events={events} products={products} historicSales={historicSales} stock={stock} distributions={distributions} />
+      </DashSectionWrap>
+    </div>
+  );
+
+  // ── Projections Dashboard ──
+  const ProjectionsDash = () => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Projections</h1>
+        <p className="text-sm mt-1" style={{ color: BRAND.textMuted }}>Sales forecasts, staffing needs, and event P&amp;L analysis.</p>
+      </div>
+      <DashSectionWrap title="Sales Forecast" icon={DollarSign}>
+        <SalesProjectionsPage events={events} products={products} historicSales={historicSales} stock={stock} distributions={distributions} />
+      </DashSectionWrap>
+      <DashSectionWrap title="Staffing Needs" icon={Users}>
+        <StaffingProjectionsPage events={events} employees={employees} shifts={shifts} roleRequirements={roleRequirements} historicSales={historicSales} />
+      </DashSectionWrap>
+      <DashSectionWrap title="Event P&L" icon={TrendingUp}>
+        <EventPnLPage events={events} products={products} historicSales={historicSales} employees={employees} shifts={shifts} stock={stock} roleRequirements={roleRequirements} distributions={distributions} />
+      </DashSectionWrap>
+    </div>
+  );
+
+  // ── Settings Dashboard ──
+  const SettingsDash = () => (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold" style={{ color: BRAND.text }}>Settings</h1>
+        <p className="text-sm mt-1" style={{ color: BRAND.textMuted }}>General settings and user management.</p>
+      </div>
+      <DashSectionWrap title="General" icon={Settings}>
+        <SettingsPage user={user} />
+      </DashSectionWrap>
+      <DashSectionWrap title="User Management" icon={Users}>
+        <UserManagementPage user={user} employees={employees} onRefresh={loadData} />
+      </DashSectionWrap>
+    </div>
+  );
+
+  const renderPage = () => {
+    const page = currentNav.page;
+
+    // Gateway dashboard
+    if (!page || page === "dashboard") return <GatewayDashboard />;
+
+    // Main single-page views
+    if (page === "scheduling-cal") return <SchedulingPage />;
+    if (page === "staffing-dashboard") return <StaffingDashboardPage />;
+    if (page === "assignment") return <StaffingPage events={events} employees={employees} shifts={shifts} locations={locations} availability={availability} roleRequirements={roleRequirements} onRefresh={loadData} user={user} currentRole={currentRole} venues={venues} eventVenues={eventVenues} />;
+    if (page === "staffing-analytics") return <StaffingProjectionsPage events={events} employees={employees} shifts={shifts} roleRequirements={roleRequirements} historicSales={historicSales} />;
+    if (page === "employees-dash") return <EmployeesPage />;
+
+    // All other pages
     const pageContent = {
-      dashboard: <DashboardPage employees={employees} events={events} locations={locations} shifts={shifts} availability={availability} products={products} stock={stock} historicSales={historicSales} />,
-      "events-manager": <EventsManagementPage events={events} locations={locations} venues={venues} eventVenues={eventVenues} onRefresh={loadData} />,
-      "calendar-view": <CalendarViewPage events={events} employees={employees} shifts={shifts} locations={locations} availability={availability} employeeSkills={employeeSkills} skills={skills} venues={venues} eventVenues={eventVenues} />,
-      "shift-builder": <ShiftBuilderPage events={events} employees={employees} shifts={shifts} locations={locations} roleRequirements={roleRequirements} onRefresh={loadData} />,
-      "role-requirements": <RoleRequirementsPage events={events} shifts={shifts} locations={locations} employees={employees} roleRequirements={roleRequirements} onRefresh={loadData} />,
-      directory: <DirectoryPage employees={employees} employeeSkills={employeeSkills} skills={skills} />,
-      "skills-tags": <SkillsTagsPage employees={employees} skills={skills} employeeSkills={employeeSkills} onRefresh={loadData} />,
-      availability: <AvailabilityPage employees={employees} events={events} availability={availability} onRefresh={loadData} user={user} currentRole={currentRole} venues={venues} eventVenues={eventVenues} />,
-      "my-shifts": <MyShiftsPage employees={employees} events={events} shifts={shifts} user={user} locations={locations} />,
-      payroll: <PayrollPage employees={employees} events={events} locations={locations} shifts={shifts} />,
+      // Inventory sub-pages
+      "inv-dashboard": <InventoryDashboardPage />,
       products: <InventoryProductsPage products={products} stock={stock} onRefresh={loadData} />,
       stock: <InventoryStockPage products={products} stock={stock} distributions={distributions} events={events} onRefresh={loadData} />,
       "inv-analytics": <InventoryAnalyticsPage historicSales={historicSales} products={products} distributions={distributions} stock={stock} events={events} />,
       "inv-projections": <InventoryProjectionsPage events={events} products={products} historicSales={historicSales} stock={stock} distributions={distributions} />,
+      // Analytics (combined: Reports + Sales Forecast + Event P&L)
+      analytics: <AnalyticsPage />,
+      reports: <ReportsPage employees={employees} events={events} shifts={shifts} historicSales={historicSales} products={products} />,
+      // Legacy projection routes (still accessible)
       "sales-projections": <SalesProjectionsPage events={events} products={products} historicSales={historicSales} stock={stock} distributions={distributions} />,
       "staffing-projections": <StaffingProjectionsPage events={events} employees={employees} shifts={shifts} roleRequirements={roleRequirements} historicSales={historicSales} />,
       "event-pnl": <EventPnLPage events={events} products={products} historicSales={historicSales} employees={employees} shifts={shifts} stock={stock} roleRequirements={roleRequirements} distributions={distributions} />,
-      reports: <ReportsPage employees={employees} events={events} shifts={shifts} historicSales={historicSales} products={products} />,
+      // User menu pages
+      "my-shifts": <MyShiftsPage employees={employees} events={events} shifts={shifts} user={user} locations={locations} />,
       notifications: <NotificationsPage notifications={notifications} />,
+      payroll: <PayrollPage employees={employees} events={events} locations={locations} shifts={shifts} />,
       settings: <SettingsPage user={user} />,
       "user-management": <UserManagementPage user={user} employees={employees} onRefresh={loadData} />,
+      // Legacy routes and staffing sub-pages
+      events: <EventsPage events={events} employees={employees} shifts={shifts} locations={locations} venues={venues} eventVenues={eventVenues} availability={availability} employeeSkills={employeeSkills} skills={skills} roleRequirements={roleRequirements} onRefresh={loadData} />,
+      scheduling: <StaffingDashboardPage />,
+      staffing: <StaffingPage events={events} employees={employees} shifts={shifts} locations={locations} availability={availability} roleRequirements={roleRequirements} onRefresh={loadData} user={user} currentRole={currentRole} venues={venues} eventVenues={eventVenues} />,
+      directory: <DirectorySkillsPage employees={employees} employeeSkills={employeeSkills} skills={skills} onRefresh={loadData} />,
+      availability: <AvailabilityPage employees={employees} events={events} availability={availability} onRefresh={loadData} user={user} currentRole={currentRole} venues={venues} eventVenues={eventVenues} />,
     };
 
-    if (!currentNav.page) {
-      return pageContent.dashboard;
-    }
-
-    return pageContent[currentNav.page] || pageContent.dashboard;
+    return pageContent[page] || <GatewayDashboard />;
   };
 
   // Loading state
@@ -6061,14 +7176,14 @@ export default function App() {
     return (
       <div
         className="flex items-center justify-center"
-        style={{ background: BRAND.gradient, height: "100dvh", minHeight: "-webkit-fill-available" }}
+        style={{ background: BRAND.navy, height: "100dvh", minHeight: "-webkit-fill-available" }}
       >
         <div className="text-center">
           <div
             className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-opacity-30 border-current"
             style={{ borderColor: BRAND.primary }}
           ></div>
-          <p className="mt-4" style={{ color: BRAND.text }}>
+          <p className="mt-4" style={{ color: BRAND.white }}>
             Loading...
           </p>
         </div>
@@ -6102,11 +7217,11 @@ export default function App() {
     };
 
     return (
-      <div className="flex items-center justify-center p-4" style={{ background: BRAND.gradient, height: "100dvh", minHeight: "-webkit-fill-available" }}>
-        <div className="w-full max-w-md p-8 rounded-2xl" style={{ background: BRAND.glass, border: `1px solid ${BRAND.glassBorder}`, backdropFilter: BRAND.blur }}>
+      <div className="flex items-center justify-center p-4" style={{ background: BRAND.navy, height: "100dvh", minHeight: "-webkit-fill-available" }}>
+        <div className="w-full max-w-md p-8 rounded-2xl" style={{ background: BRAND.white, border: `2px solid ${BRAND.accentBlue}`, boxShadow: "0 16px 48px rgba(0,0,0,0.25)" }}>
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold mb-2" style={{ color: BRAND.primary }}>Collide</h1>
-            <p className="text-sm" style={{ color: "rgba(224,230,255,0.7)" }}>Welcome! Set your password to get started.</p>
+            <h1 className="text-3xl font-bold mb-2" style={{ color: BRAND.navy, letterSpacing: "2px" }}>COLLIDE</h1>
+            <p className="text-sm font-medium" style={{ color: BRAND.lightBlue }}>Welcome! Set your password to get started.</p>
           </div>
           {pwdSuccess ? (
             <div className="p-4 rounded-lg text-center" style={{ background: "rgba(74,222,128,0.15)", color: "#4ade80" }}>
@@ -6141,14 +7256,14 @@ export default function App() {
     return (
       <div
         className="flex items-center justify-center"
-        style={{ background: BRAND.gradient, height: "100dvh", minHeight: "-webkit-fill-available" }}
+        style={{ background: BRAND.navy, height: "100dvh", minHeight: "-webkit-fill-available" }}
       >
         <div className="text-center">
           <div
             className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-opacity-30 border-current"
             style={{ borderColor: BRAND.primary }}
           ></div>
-          <p className="mt-4" style={{ color: BRAND.text }}>
+          <p className="mt-4" style={{ color: BRAND.white }}>
             Loading your workspace...
           </p>
         </div>
@@ -6156,304 +7271,193 @@ export default function App() {
     );
   }
 
+  // Collide Logo SVG component
+  const CollideLogo = ({ color = BRAND.navy, height = 28 }) => {
+    // Body color follows the color prop; the "C" letter inverts for contrast
+    const bodyColor = color;
+    const cLetterColor = color === BRAND.white ? BRAND.navy : BRAND.white;
+    const cyanAccent = BRAND.primary;
+    return (
+      <svg viewBox="0 0 576 576" height={height} xmlns="http://www.w3.org/2000/svg">
+        {/* Body / flame shapes (st2 → bodyColor) */}
+        <path fill={bodyColor} d="M491.01,206.76c-.75.2-1.13.59-1.64,1.14-12.7,13.59-26.11,28.86-40.68,40.51-.86.69-1.81,1.6-3,1.49,7.74-12.59,17-24.27,27.14-35.02,7.19-7.62,14.86-14.24,22.87-20.92-.27,4.44-2.63,8.57-4.7,12.39-.06.11.06.32,0,.43Z"/>
+        <path fill={bodyColor} d="M341.39,93.63c-.25,1.28.62.77,1.41.91,14.52,2.65,29.09,1.43,43.48,5.27,17.99,4.8,33.5,17.63,47.02,29.9,17.96,16.29,35.83,35.6,51.28,54.26,1.34,1.62,3.86,5.82,5.13,6.83.32.25.47.26.86.2-.29-.98.44-2.22.43-2.99,1.73,1.31,2.78,3.56,3.8,5.42l-.13.56c-9.47,7.55-19.6,14.98-27.82,23.91-8.47,9.2-14.79,18.48-21.23,29.19-1.47,2.45-2.24,4.66-4.02,7.08-1.2,1.63-3.43,5.06-5.73,3.66-4.88-5.71-10.57-10.53-14.88-16.73-7.84-11.27-9.5-30.32-12.59-43.79-1.42-6.17-3.33-12.35-4.97-18.18-.74-2.63-.83-5.68-1.98-8.21-.3-.65.05-1.05-1.05-.85.77,6.7,2.58,13.3,3.74,19.97,6.98,40.22,14.11,80.44,20.68,120.7,5.43,33.3,10.13,66.71,16.3,99.88,7.79,10.08,21.52,29.1,9.74,40.69-12.4,12.2-51.45,15.61-68.93,18.69-26.44,4.66-52.01,9.81-78.78,12.68-33.39,3.58-72.67,11.32-105.96,5.93-19.16-3.1-26.29-8.51-19.94-28.78,1.07-3.41,4.56-9.31,4.73-11.93.12-1.8-.44-3.15-.46-4.7-.38-21.7-.9-43.27-1.28-64.95-.5-27.94-2.77-55.33-2.14-83.71.67-29.6,5.13-58.7,6.43-87.96.36-8.1.04-16.24.43-24.34.04-.9.16-6.66-.96-3.95-1.35,3.27-1.17,9.24-1.71,12.82-.24,1.61-1.7,2.51-1.97,5.28-1.55,15.91-3.56,31.82-5.18,47.78-.75,7.46-.78,9.34-3.21,16.44-3.41,9.99-7.31,19.79-10.89,29.71-1.49,1.04-9.69-4.62-11.54-5.61-15.32-8.15-40.5-23.8-57.73-24.54l9.72-22.96c16.71-46.63,37.46-108.64,93.19-119.15,4.71-.89,10.36-.2,14.21-3.74l4.71-5.76c3.57,3.39,6.75,7.58,10.6,10.65,24.91,19.9,75.87,4.37,93.37-20.59,3.72-5.3,3.49-10.23,11.61-8.38,4.25.97,7.65,3.09,12.23,3.37Z"/>
+        <path fill={bodyColor} d="M320.45,88.04c-8.03,11.72-19.43,21.4-32.49,27.11-16.88,7.39-46.18,8.66-62.12-1.56-3.32-2.13-6.24-5.69-9.26-8.26-.13-.77.06-.54.54-.75,2.55-1.12,18.73,4.02,22.88,4.69,23.08,3.69,49.46-2.75,69.29-14.65,3.52-2.11,6.93-5.93,11.16-6.57Z"/>
+        <path fill={bodyColor} d="M151.59,289.62c-.13.78-2.19.46-2.77.42-16.49-1.11-32.17-5.54-46.82-13.01-5.87-2.99-11.85-6.13-16.03-11.32-2.04-2.54-3.25-4.26,1.24-3.8,15.1,1.54,43.02,15.43,56.64,23.28,2.4,1.38,4.81,3.93,7.74,4.44Z"/>
+        {/* Cyan accents (st0) */}
+        <path fill={cyanAccent} d="M213.58,105.97l-4.71,5.76c-3.85,3.54-9.5,2.85-14.21,3.74-55.73,10.51-76.48,72.52-93.19,119.15l-9.72,22.96c-2.55-.11-5.14.08-7.7,0-1.23-1.22,9.2-21.49,10.47-24.35,14.87-33.61,32.5-92.78,67.16-109.71,8.26-4.04,24.01-9.52,32.99-11.03,2.38-.4,5.69-.21,7.8-.75,3.11-.8,6.59-6.67,11.1-5.78Z"/>
+        <path fill={cyanAccent} d="M497.08,188.53c-2.3-5.59-8.69-12.9-12.69-17.65-8.05-9.55-17.09-18.3-25-27.98-12.35-15.11-22.65-29.75-38.96-41.37-1.74-1.24-12.49-8.15-13.5-8.37-3.27-.7-6.08-1.1-9.53-1.93-19.65-4.77-34.94-2.22-54.08-4.06-6.21-.6-11.97-5.11-18.35-4.23-3.63.5-9.7,5.73-13.11,7.83-21.04,12.94-44.35,17.89-68.94,14.28-7.45-1.09-15.29-4.03-22.4-4.95-7.02-.91-12.57,5.62-19.01,7.69-8.38,2.7-16.99,3.16-25.66,6.4-35.2,13.15-52.85,45.28-66.8,78.04-7.81,18.34-15.58,36.61-24.26,54.36-1.71,3.49-6.31,12.09-6.18,15.56.06,1.62,6.69,8.18,8.24,9.51,14.36,12.33,44.46,22.13,63.24,23.09,9.88.51,13.04-.35,16.48-9.62,2.45-6.62,3.81-13.71,6.42-20.29h1.27s-.43,12.16-.43,12.16c-.97,27.34-1.24,53.73.02,81.13,1,21.66,2.05,43.31,3.4,64.94.6,9.59,2.96,21.81-.41,30.76-4.42,11.75-12.93,26.17,3.03,34.1,15.94,7.91,56.21,4.54,74.54,2.83,39.89-3.72,81.5-8.63,120.84-15.93,19.06-3.54,43.08-7.6,61.04-14.18,26.13-9.59,27.03-24.88,13.01-47.15-1.09-1.72-4.34-5.34-4.77-6.76-1.73-5.66-2.17-16.09-3.17-22.46-6.16-39.38-11.37-79.02-18.44-118.24-1.51-8.36-3.64-16.7-4.57-25.12.76-.12.94-.02,1.48.44,1.75,1.49,5.15,6.92,7.08,9.15,2.5,2.9,5.31,5.54,7.71,8.53,2.28,1.87,7.41-1.86,9.52-3.26,13.59-9,39.12-34.83,46.89-49.04-.75.2-1.13.59-1.64,1.14-12.7,13.59-26.11,28.86-40.68,40.51-.86.69-1.81,1.6-3,1.49,7.74-12.59,17-24.27,27.14-35.02,7.19-7.62,14.86-14.24,22.87-20.92-.27,4.44-2.63,8.57-4.7,12.39,3.48-3.95,8.21-12.61,6.07-17.8ZM217.11,104.58c2.55-1.12,18.73,4.02,22.88,4.69,23.08,3.69,49.46-2.75,69.29-14.65,3.52-2.11,6.93-5.93,11.16-6.57-8.03,11.72-19.43,21.4-32.49,27.11-16.88,7.38-46.18,8.66-62.12-1.56-3.32-2.13-6.24-5.69-9.26-8.26-.13-.77.06-.54.54-.75ZM148.82,290.04c-16.49-1.11-32.17-5.54-46.82-13.01-5.87-2.99-11.85-6.13-16.03-11.32-2.04-2.54-3.25-4.26,1.24-3.8,15.1,1.54,43.02,15.43,56.64,23.28,2.4,1.38,4.81,3.93,7.74,4.44-.13.78-2.19.46-2.77.42ZM494.67,191.39c-9.47,7.55-19.6,14.98-27.82,23.91-8.47,9.2-14.79,18.48-21.23,29.19-1.47,2.45-2.24,4.66-4.02,7.08-1.2,1.63-3.43,5.06-5.73,3.66-4.88-5.71-10.57-10.53-14.88-16.73-7.84-11.27-9.5-30.32-12.59-43.79-1.42-6.17-3.33-12.35-4.97-18.18-.74-2.63-.83-5.68-1.98-8.21-.3-.65.05-1.05-1.05-.85.77,6.7,2.58,13.3,3.74,19.97,6.98,40.22,14.11,80.44,20.68,120.7,5.43,33.3,10.13,66.71,16.3,99.88,7.79,10.08,21.52,29.1,9.74,40.69-12.4,12.2-51.45,15.61-68.93,18.69-26.44,4.66-52.01,9.81-78.78,12.68-33.39,3.58-72.67,11.32-105.96,5.93-19.16-3.1-26.29-8.51-19.94-28.78,1.07-3.41,4.56-9.31,4.73-11.93.12-1.8-.44-3.15-.46-4.7-.38-21.7-.9-43.27-1.28-24.95-.5-27.94-2.77-55.33-2.14-83.71.67-29.6,5.13-58.7,6.43-87.96.36-8.1.04-16.24.43-24.34.04-.9.16-6.67-.96-3.95-1.35,3.27-1.17,9.24-1.71,12.82-.24,1.61-1.7,2.51-1.97,5.28-1.55,15.91-3.56,31.82-5.18,47.78-.75,7.46-.78,9.34-3.21,16.44-3.41,9.99-7.31,19.79-10.89,29.71-1.49,1.04-9.69-4.62-11.54-5.61-15.32-8.15-40.5-23.8-57.73-24.54-2.55-.11-5.14.08-7.7,0-1.23-1.22,9.2-21.49,10.47-24.35,14.87-33.61,32.5-92.78,67.16-109.71,8.26-4.03,24.01-9.51,32.99-11.03,2.38-.4,5.69-.21,7.8-.75,3.11-.8,6.59-6.67,11.1-5.78,3.57,3.39,6.75,7.58,10.6,10.65,24.91,19.89,75.87,4.37,93.37-20.59,3.72-5.3,3.49-10.23,11.61-8.38,4.25.97,7.65,3.09,12.23,3.37-.25,1.28.62.77,1.41.91,14.52,2.65,29.09,1.43,43.48,5.27,17.99,4.8,33.5,17.63,47.02,29.9,17.96,16.29,35.83,35.6,51.28,54.26,1.34,1.62,3.86,5.82,5.13,6.83.32.25.47.26.86.2-.29-.98.44-2.22.43-2.99,1.73,1.31,2.78,3.56,3.8,5.42l-.13.56Z"/>
+        {/* "C" letter (st1 → contrasting color) */}
+        <path fill={cLetterColor} d="M254.2,253.21l-4.86-36.2c-.72-5.32,3.13-10.36,8.45-11.07l92.65-12.45-3.28-24.4-92.65,12.45c-18.79,2.52-32.1,19.96-29.57,38.75l4.86,36.21c2.52,18.78,19.96,32.09,38.75,29.57l93.89-12.62-3.28-24.39-93.89,12.62c-5.32.71-10.36-3.14-11.07-8.45Z"/>
+        <rect fill={cLetterColor} x="283.62" y="213.71" width="71.5" height="24.62" transform="translate(-27.25 44.54) rotate(-7.65)"/>
+      </svg>
+    );
+  };
+
   return (
     <div
       className="flex flex-col"
       style={{
-        background: BRAND.gradient,
-        height: "100dvh",       /* dynamic viewport height — works on mobile */
+        background: BRAND.white,
+        height: "100dvh",
         minHeight: "-webkit-fill-available",
-        overflow: "hidden",     /* prevent body scroll — children handle their own */
+        overflow: "hidden",
       }}
     >
-      {/* Header */}
-      <div
-        className="flex-shrink-0 border-b px-3 py-2 md:px-4 md:py-3 flex items-center justify-between gap-2"
-        style={{ borderColor: BRAND.glassBorder }}
-      >
-        <div className="flex items-center gap-2 flex-shrink-0">
+      {/* ═══════ HEADER ═══════ */}
+      <div className="flex-shrink-0 border-b px-4 py-2.5 flex items-center justify-between gap-3" style={{ background: BRAND.navy, borderColor: "rgba(255,255,255,0.1)" }}>
+        {/* Left: Logo + Mobile burger */}
+        <div className="flex items-center gap-3 flex-shrink-0">
           {isMobile && (
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2.5 -ml-1 hover:bg-white/10 rounded-lg transition"
-              aria-label="Toggle menu"
-            >
-              {mobileMenuOpen ? (
-                <X size={22} style={{ color: BRAND.text }} />
-              ) : (
-                <Menu size={22} style={{ color: BRAND.text }} />
-              )}
+            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 -ml-1 rounded-lg transition" style={{ color: BRAND.white }} aria-label="Toggle menu">
+              {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
             </button>
           )}
-          <h1 className={`font-bold ${isMobile ? "text-lg" : "text-xl"}`} style={{ color: BRAND.primary }}>
-            Collide
-          </h1>
+          <button onClick={() => handleNavigate({ section: "dashboard", page: null })} className="flex items-center gap-2">
+            <CollideLogo color={BRAND.white} height={24} />
+          </button>
           {currentRole && (
-            <span className="flex-shrink-0" style={{
-              fontSize: 10,
-              padding: "2px 8px",
-              borderRadius: 12,
-              background: currentRole === "admin" ? `${BRAND.primary}30` : currentRole === "team_lead" ? "rgba(251,191,36,0.2)" : "rgba(74,222,128,0.2)",
-              color: currentRole === "admin" ? BRAND.primary : currentRole === "team_lead" ? "#fbbf24" : "#4ade80",
-              fontWeight: 600,
-              textTransform: "uppercase",
-              letterSpacing: "0.5px",
-            }}>
+            <span className="flex-shrink-0" style={{ fontSize: 10, padding: "2px 10px", borderRadius: 12, background: BRAND.primary, color: BRAND.navy, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
               {currentRole === "team_lead" ? "Team Lead" : currentRole}
             </span>
           )}
         </div>
 
-        {/* Search — hidden on mobile, shown on desktop */}
+        {/* Center: Search */}
         {!isMobile && (
           <div className="flex-1 max-w-md mx-4">
-            <button
-              onClick={() => setCommandPaletteOpen(true)}
-              className="w-full px-4 py-2 rounded-lg text-sm flex items-center gap-2 transition hover:bg-white/10"
-              style={{
-                background: "rgba(255,255,255,0.05)",
-                border: `1px solid ${BRAND.glassBorder}`,
-                color: "rgba(224,230,255,0.7)",
-              }}
-            >
-              <Search size={16} />
-              <span>Search...</span>
-              <span className="ml-auto text-xs">⌘K</span>
+            <button onClick={() => setCommandPaletteOpen(true)} className="w-full px-4 py-2 rounded-full text-sm flex items-center gap-2 transition" style={{ background: "rgba(255,255,255,0.15)", border: "none", color: BRAND.white }}>
+              <Search size={16} /><span style={{ opacity: 0.6 }}>Search...</span><span className="ml-auto text-xs" style={{ opacity: 0.4 }}>⌘K</span>
             </button>
           </div>
         )}
 
+        {/* Right: User avatar dropdown */}
         <div className="flex items-center gap-1 flex-shrink-0">
           {isMobile && (
-            <button
-              onClick={() => setCommandPaletteOpen(true)}
-              className="p-2.5 hover:bg-white/10 rounded-lg transition"
-              aria-label="Search"
-            >
-              <Search size={20} style={{ color: BRAND.text }} />
+            <button onClick={() => setCommandPaletteOpen(true)} className="p-2 rounded-lg transition" aria-label="Search">
+              <Search size={20} style={{ color: BRAND.white }} />
             </button>
           )}
-          <button
-            onClick={() => handleNavigate({ section: "notifications", page: "notifications" })}
-            className="p-2.5 hover:bg-white/10 rounded-lg transition"
-            aria-label="Notifications"
-          >
-            <Bell size={20} style={{ color: BRAND.text }} />
+          {/* Notification bell shortcut */}
+          <button onClick={() => handleNavigate({ section: "notifications", page: "notifications" })} className="p-2 rounded-lg transition relative" style={{ color: BRAND.white }} aria-label="Notifications">
+            <Bell size={20} />
+            {notifications.length > 0 && (
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full border-2" style={{ background: BRAND.danger, borderColor: BRAND.navy }}></span>
+            )}
           </button>
-          <button
-            onClick={handleLogout}
-            className="p-2.5 hover:bg-white/10 rounded-lg transition"
-            aria-label="Log out"
-          >
-            <LogOut size={20} style={{ color: BRAND.text }} />
-          </button>
+          {/* User avatar menu */}
+          <div className="relative" data-user-menu>
+            <button onClick={() => setUserMenuOpen(!userMenuOpen)} className="flex items-center gap-2 px-2 py-1.5 rounded-full transition" style={{ background: userMenuOpen ? "rgba(255,255,255,0.15)" : "transparent" }}>
+              <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: BRAND.navy }}>
+                <User size={16} style={{ color: BRAND.white }} />
+              </div>
+              {!isMobile && <span className="text-sm font-medium" style={{ color: BRAND.white }}>{displayName}</span>}
+              <ChevronDown size={14} style={{ color: "rgba(255,255,255,0.7)", transform: userMenuOpen ? "rotate(180deg)" : "rotate(0)", transition: "transform 0.2s" }} />
+            </button>
+            {userMenuOpen && (
+              <div className="absolute right-0 top-full mt-2 w-56 rounded-2xl overflow-hidden z-[100]" style={{ background: BRAND.white, border: `1px solid ${BRAND.accentBlue}`, boxShadow: "0 12px 40px rgba(0,57,107,0.18)" }}>
+                <div className="px-4 py-3 border-b" style={{ borderColor: BRAND.accentBlue, background: `${BRAND.accentBlue}60` }}>
+                  <div className="text-sm font-semibold" style={{ color: BRAND.navy }}>{displayName}</div>
+                  <div className="text-xs" style={{ color: BRAND.lightBlue }}>{user?.email}</div>
+                </div>
+                {USER_MENU_ITEMS.filter(item => !item.roles || item.roles.includes(currentRole)).map(item => (
+                  <button key={item.id} onClick={() => { handleNavigate({ section: item.id, page: item.page }); setUserMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition text-left" style={{ color: BRAND.navy, background: "transparent" }}
+                    onMouseEnter={e => e.currentTarget.style.background = BRAND.accentBlue}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <item.icon size={16} style={{ color: BRAND.lightBlue }} />
+                    {item.label}
+                  </button>
+                ))}
+                <div className="border-t" style={{ borderColor: BRAND.accentBlue }}>
+                  <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-2.5 text-sm transition text-left" style={{ color: BRAND.danger }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(244,67,54,0.08)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    <LogOut size={16} /> Log Out
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Breadcrumb — hide on mobile to save space */}
-      {!isMobile && currentNav.page && (
-        <div
-          className="flex-shrink-0 px-4 py-2 text-sm border-b"
-          style={{
-            color: "rgba(224,230,255,0.6)",
-            borderColor: BRAND.glassBorder,
-          }}
-        >
-          {getBreadcrumb()}
-        </div>
-      )}
+      {/* ═══════ MAIN CONTENT AREA ═══════ */}
+      <div className="flex-1 relative" style={{ minHeight: 0, overflow: "hidden" }}>
 
-      {/* Main content area */}
-      <div className="flex-1 flex" style={{ minHeight: 0 }}>
-        {/* Desktop sidebar */}
+        {/* ── Floating Nav Sidebar (desktop) — FAB pill buttons ── */}
         {!isMobile && (
-          <div
-            className="w-64 flex-shrink-0 overflow-y-auto border-r p-4 space-y-1"
-            style={{ borderColor: BRAND.glassBorder }}
-          >
-            {NAV_TREE.sections.filter(section => {
-              if (!currentRole) return false;
-              return !section.roles || section.roles.includes(currentRole);
-            }).map((section) => {
-              const Icon = section.icon;
-              const hasChildren = section.children && section.children.length > 0;
-              const isActive = currentNav.section === section.id;
-              const isExpanded = expandedSections.has(section.id);
-
-              return (
-                <div key={section.id}>
-                  <button
-                    onClick={() => {
-                      if (hasChildren) {
-                        toggleSection(section.id);
-                      } else {
-                        handleNavigate({
-                          section: section.id,
-                          page: section.page,
-                        });
-                      }
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg transition hover:bg-white/10 text-left text-sm"
-                    style={{
-                      background: isActive ? `${BRAND.primary}20` : "transparent",
-                      color: isActive ? BRAND.primary : BRAND.text,
-                    }}
-                  >
-                    <Icon size={18} />
-                    <span className="flex-1">{section.label}</span>
-                    {hasChildren && (
-                      <ChevronDown
-                        size={16}
-                        style={{
-                          transform: isExpanded ? "rotate(0)" : "rotate(-90deg)",
-                          transition: "transform 0.2s",
-                        }}
-                      />
-                    )}
-                  </button>
-
-                  {hasChildren && isExpanded && (
-                    <div className="ml-4 space-y-1 mt-1">
-                      {section.children.filter(child => {
-                        if (!currentRole) return false;
-                        return !child.roles || child.roles.includes(currentRole);
-                      }).map((child) => {
-                        const isChildActive = currentNav.page === child.page;
-                        return (
-                          <button
-                            key={child.id}
-                            onClick={() =>
-                              handleNavigate({
-                                section: section.id,
-                                page: child.page,
-                              })
-                            }
-                            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg transition hover:bg-white/10 text-left text-sm"
-                            style={{
-                              background: isChildActive ? `${BRAND.primary}20` : "transparent",
-                              color: isChildActive ? BRAND.primary : "rgba(224,230,255,0.7)",
-                            }}
-                          >
-                            <div
-                              className="w-2 h-2 rounded-full"
-                              style={{
-                                background: isChildActive ? BRAND.primary : "rgba(224,230,255,0.3)",
-                              }}
-                            ></div>
-                            <span>{child.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Mobile sidebar overlay */}
-        {isMobile && mobileMenuOpen && (
-          <>
-            {/* Backdrop */}
-            <div
-              onClick={() => setMobileMenuOpen(false)}
-              className="fixed inset-0 z-40"
-              style={{ background: "rgba(0,10,30,0.7)", backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)" }}
-            />
-            {/* Drawer */}
-            <div
-              className="fixed top-0 left-0 bottom-0 z-50 w-72 overflow-y-auto p-4 pt-5 space-y-1"
-              style={{
-                background: "linear-gradient(180deg, #001A35 0%, #00152B 100%)",
-                borderRight: `1px solid ${BRAND.glassBorder}`,
-                boxShadow: "4px 0 24px rgba(0,0,0,0.5)",
-                WebkitOverflowScrolling: "touch",
-              }}
-            >
-              {/* Drawer header */}
-              <div className="flex items-center justify-between mb-4 pb-3" style={{ borderBottom: `1px solid ${BRAND.glassBorder}` }}>
-                <h2 className="text-lg font-bold" style={{ color: BRAND.primary }}>Menu</h2>
-                <button
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="p-2 hover:bg-white/10 rounded-lg transition"
-                  aria-label="Close menu"
-                >
-                  <X size={22} style={{ color: BRAND.text }} />
-                </button>
-              </div>
-              {NAV_TREE.sections.filter(section => {
-                if (!currentRole) return false;
-                return !section.roles || section.roles.includes(currentRole);
-              }).map((section) => {
-                const Icon = section.icon;
-                const hasChildren = section.children && section.children.length > 0;
-                const isActive = currentNav.section === section.id;
-                const isExpanded = expandedSections.has(section.id);
+          <div className="absolute left-0 top-0 bottom-0 z-40 flex flex-col items-start justify-start py-6 pl-3" style={{ pointerEvents: "none" }}>
+            <div className="flex flex-col gap-2" style={{ pointerEvents: "auto" }}>
+              {NAV_SIDEBAR.filter(item => !item.roles || item.roles.includes(currentRole)).map(item => {
+                const Icon = item.icon;
+                const isActive = currentNav.section === item.id || currentNav.page === item.page;
+                const hasFlyout = item.flyout && item.flyout.length > 0;
 
                 return (
-                  <div key={section.id}>
+                  <div key={item.id} className="relative"
+                    onMouseEnter={() => { if (hasFlyout) { clearTimeout(flyoutTimeout.current); setHoveredFlyout(item.id); } }}
+                    onMouseLeave={() => { if (hasFlyout) { flyoutTimeout.current = setTimeout(() => setHoveredFlyout(null), 300); } }}
+                  >
                     <button
                       onClick={() => {
-                        if (hasChildren) {
-                          toggleSection(section.id);
+                        if (item.page) {
+                          handleNavigate({ section: item.id, page: item.page });
+                        } else if (hasFlyout) {
+                          // For flyout items, clicking the first sub-item
+                          const firstSub = item.flyout.find(s => !s.roles || s.roles.includes(currentRole));
+                          if (firstSub) handleNavigate({ section: item.id, page: firstSub.page });
                         } else {
-                          handleNavigate({
-                            section: section.id,
-                            page: section.page,
-                          });
+                          handleNavigate({ section: item.id, page: null });
                         }
                       }}
-                      className="w-full flex items-center gap-3 px-3 py-3 rounded-lg transition active:bg-white/15 text-left"
+                      className="flex items-center gap-2.5 rounded-full transition-all duration-200"
                       style={{
-                        background: isActive ? `${BRAND.primary}20` : "transparent",
-                        color: isActive ? BRAND.primary : BRAND.text,
-                        fontSize: 15,
+                        background: isActive ? BRAND.primary : BRAND.navy,
+                        color: BRAND.white,
+                        padding: "12px 20px 12px 14px",
+                        boxShadow: isActive ? "0 4px 20px rgba(84,205,249,0.35)" : "0 4px 16px rgba(0,57,107,0.3)",
+                        transform: isActive ? "scale(1.05)" : "scale(1)",
+                        minWidth: 0,
+                        whiteSpace: "nowrap",
                       }}
+                      onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = BRAND.lightBlue; }}
+                      onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = BRAND.navy; }}
                     >
-                      <Icon size={20} />
-                      <span className="flex-1 font-medium">{section.label}</span>
-                      {hasChildren && (
-                        <ChevronDown
-                          size={18}
-                          style={{
-                            transform: isExpanded ? "rotate(0)" : "rotate(-90deg)",
-                            transition: "transform 0.2s",
-                          }}
-                        />
-                      )}
+                      <Icon size={20} style={{ flexShrink: 0 }} />
+                      <span className="text-sm font-semibold">{item.label}</span>
+                      {hasFlyout && <ChevronRight size={14} style={{ marginLeft: 2, opacity: 0.7 }} />}
                     </button>
 
-                    {hasChildren && isExpanded && (
-                      <div className="ml-5 space-y-0.5 mt-1 mb-1">
-                        {section.children.filter(child => {
-                          if (!currentRole) return false;
-                          return !child.roles || child.roles.includes(currentRole);
-                        }).map((child) => {
-                          const isChildActive = currentNav.page === child.page;
+                    {/* Flyout submenu — fans out to the right */}
+                    {hasFlyout && hoveredFlyout === item.id && (
+                      <div
+                        className="absolute top-1/2 rounded-2xl overflow-hidden z-50"
+                        style={{
+                          left: "calc(100% + 8px)",
+                          transform: "translateY(-50%)",
+                          background: BRAND.white,
+                          border: `2px solid ${BRAND.accentBlue}`,
+                          boxShadow: "0 8px 32px rgba(0,57,107,0.18)",
+                          minWidth: 200,
+                        }}
+                        onMouseEnter={() => { clearTimeout(flyoutTimeout.current); setHoveredFlyout(item.id); }}
+                        onMouseLeave={() => { flyoutTimeout.current = setTimeout(() => setHoveredFlyout(null), 300); }}
+                      >
+                        <div className="px-4 py-2 border-b" style={{ borderColor: BRAND.accentBlue, background: `${BRAND.accentBlue}80` }}>
+                          <span className="text-xs font-bold uppercase tracking-wider" style={{ color: BRAND.navy }}>{item.label}</span>
+                        </div>
+                        {item.flyout.filter(sub => !sub.roles || sub.roles.includes(currentRole)).map(sub => {
+                          const isSubActive = currentNav.page === sub.page;
                           return (
-                            <button
-                              key={child.id}
-                              onClick={() =>
-                                handleNavigate({
-                                  section: section.id,
-                                  page: child.page,
-                                })
-                              }
-                              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition active:bg-white/15 text-left"
-                              style={{
-                                background: isChildActive ? `${BRAND.primary}20` : "transparent",
-                                color: isChildActive ? BRAND.primary : "rgba(224,230,255,0.7)",
-                                fontSize: 14,
-                              }}
-                            >
-                              <div
-                                className="w-2 h-2 rounded-full flex-shrink-0"
-                                style={{
-                                  background: isChildActive ? BRAND.primary : "rgba(224,230,255,0.3)",
-                                }}
-                              ></div>
-                              <span>{child.label}</span>
+                            <button key={sub.id} onClick={() => { handleNavigate({ section: item.id, page: sub.page }); setHoveredFlyout(null); }}
+                              className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium transition text-left"
+                              style={{ color: isSubActive ? BRAND.primary : BRAND.navy, background: isSubActive ? `${BRAND.primary}10` : "transparent" }}
+                              onMouseEnter={e => { if (!isSubActive) e.currentTarget.style.background = BRAND.accentBlue; }}
+                              onMouseLeave={e => { if (!isSubActive) e.currentTarget.style.background = isSubActive ? `${BRAND.primary}10` : "transparent"; }}>
+                              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: isSubActive ? BRAND.primary : BRAND.lightBlue }}></div>
+                              {sub.label}
                             </button>
                           );
                         })}
@@ -6463,29 +7467,72 @@ export default function App() {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* ── Mobile drawer ── */}
+        {isMobile && mobileMenuOpen && (
+          <>
+            <div onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-40" style={{ background: "rgba(0,57,107,0.3)", backdropFilter: "blur(4px)" }} />
+            <div className="fixed top-0 left-0 bottom-0 z-50 w-72 overflow-y-auto p-4 pt-5 space-y-1" style={{ background: BRAND.white, borderRight: `2px solid ${BRAND.accentBlue}`, boxShadow: "4px 0 24px rgba(0,57,107,0.15)" }}>
+              <div className="flex items-center justify-between mb-4 pb-3" style={{ borderBottom: `2px solid ${BRAND.accentBlue}` }}>
+                <CollideLogo color={BRAND.navy} height={22} />
+                <button onClick={() => setMobileMenuOpen(false)} className="p-2 rounded-lg transition"><X size={22} style={{ color: BRAND.navy }} /></button>
+              </div>
+              {NAV_SIDEBAR.filter(item => !item.roles || item.roles.includes(currentRole)).map(item => {
+                const Icon = item.icon;
+                const isActive = currentNav.section === item.id;
+                const hasFlyout = item.flyout && item.flyout.length > 0;
+                const isExpanded = expandedSections.has(item.id);
+                return (
+                  <div key={item.id}>
+                    <button onClick={() => {
+                      if (hasFlyout) { toggleSection(item.id); }
+                      else if (item.page) { handleNavigate({ section: item.id, page: item.page }); setMobileMenuOpen(false); }
+                      else { handleNavigate({ section: item.id, page: null }); setMobileMenuOpen(false); }
+                    }} className="w-full flex items-center gap-3 px-3 py-3 rounded-xl transition text-left" style={{ background: isActive ? `${BRAND.primary}15` : "transparent", color: isActive ? BRAND.primary : BRAND.navy, fontSize: 15 }}>
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: isActive ? BRAND.primary : BRAND.navy }}>
+                        <Icon size={18} style={{ color: BRAND.white }} />
+                      </div>
+                      <span className="flex-1 font-semibold">{item.label}</span>
+                      {hasFlyout && <ChevronDown size={18} style={{ color: BRAND.lightBlue, transform: isExpanded ? "rotate(0)" : "rotate(-90deg)", transition: "transform 0.2s" }} />}
+                    </button>
+                    {hasFlyout && isExpanded && (
+                      <div className="ml-6 space-y-0.5 mt-1 mb-1">
+                        {item.flyout.filter(sub => !sub.roles || sub.roles.includes(currentRole)).map(sub => (
+                          <button key={sub.id} onClick={() => { handleNavigate({ section: item.id, page: sub.page }); setMobileMenuOpen(false); }}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition text-left"
+                            style={{ color: currentNav.page === sub.page ? BRAND.primary : BRAND.navy, fontSize: 14, background: currentNav.page === sub.page ? `${BRAND.primary}10` : "transparent" }}>
+                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: currentNav.page === sub.page ? BRAND.primary : BRAND.lightBlue }}></div>
+                            {sub.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {/* User menu items in mobile drawer */}
+              <div className="mt-4 pt-4" style={{ borderTop: `2px solid ${BRAND.accentBlue}` }}>
+                {USER_MENU_ITEMS.filter(item => !item.roles || item.roles.includes(currentRole)).map(item => (
+                  <button key={item.id} onClick={() => { handleNavigate({ section: item.id, page: item.page }); setMobileMenuOpen(false); }}
+                    className="w-full flex items-center gap-3 px-3 py-3 rounded-lg transition text-left" style={{ color: BRAND.navy, fontSize: 15 }}>
+                    <item.icon size={20} style={{ color: BRAND.lightBlue }} /><span className="flex-1 font-medium">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </>
         )}
 
-        {/* Page Content */}
-        <div
-          className="flex-1 overflow-y-auto"
-          style={{
-            padding: isMobile ? "16px" : "24px",
-            WebkitOverflowScrolling: "touch",
-          }}
-        >
+        {/* ── Page Content ── */}
+        <div className="h-full overflow-y-auto" style={{ padding: isMobile ? "16px" : "24px 24px 24px 24px", paddingLeft: isMobile ? "16px" : "220px", WebkitOverflowScrolling: "touch" }}>
           {renderPage()}
         </div>
       </div>
 
       {/* Command Palette */}
-      <CommandPalette
-        isOpen={commandPaletteOpen}
-        onClose={() => setCommandPaletteOpen(false)}
-        pages={[]}
-        currentPage={currentNav}
-        onNavigate={handleNavigate}
-      />
+      <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} pages={[]} currentPage={currentNav} onNavigate={handleNavigate} />
     </div>
   );
 }

@@ -191,3 +191,136 @@ Tharindra requested Google Places autocomplete be moved from the Address field t
 **Google Cloud APIs required:** Maps JavaScript API + Places API (New) — both must be enabled
 
 ---
+
+
+## 2026-03-31 | Session 5 | Brand overhaul — white + navy scheme, navigation restructure
+
+Complete visual overhaul from dark glassmorphism to Collide brand guidelines. Tharindra provided 8-page Brand Guidelines PDF and Collide logo. Also major structural reorganization of page hierarchy.
+
+**Brand changes:**
+- Background changed from dark gradient to white (#ffffff)
+- All glass effects changed from white-tinted to navy-tinted (rgba(0,57,107,0.06))
+- Text changed from white to navy (#00396b)
+- BRAND constants expanded with: navy, lightBlue, primary, accentBlue, navBg, navText, navActive, navHover
+- Montserrat font loaded globally via Google Fonts CDN in index.html
+- Fixed all `text-white` class on inputs (invisible on white background)
+- Fixed chart grid strokes (invisible rgba(255,255,255,0.1) → BRAND.accentBlue)
+- Fixed loading screen text color (navy text on navy bg → white text)
+
+**Navigation restructure:**
+- Replaced traditional sidebar with floating FAB-style pill buttons on left side
+- Flyout submenu on hover for Inventory (Dashboard, Products, Analytics, Projections)
+- Renamed "Scheduling" → "Staffing" throughout
+- Removed standalone "Projections" section from nav
+- Created NAV_SIDEBAR array (parallel to legacy NAV_TREE for backward compatibility)
+
+**Page merges and simplifications:**
+- **Dashboard**: Replaced detailed stat cards with Gateway Dashboard (4 big buttons: Staffing, Employees, Inventory, Analytics) + upcoming events snapshot
+- **Staffing**: Combined Scheduling, Assignment, and Staffing Analytics into 3-tab wrapper (SchedulingPage inner component)
+- **Employees**: Combined Directory + Skills + By Role into DirectorySkillsPage with 3 tabs, paired with Payroll in 2/3 + 1/3 grid
+- **Inventory**: Created InventoryDashboardPage as landing with snapshot chart, "Enter Inventory" button, last update log, and quick-link buttons to Analytics/Projections
+- **Analytics**: New combined AnalyticsPage with 3 tabs — Reports, Sales Forecast, Event P&L (replaced separate Projections section)
+- **EventsPage**: Rewritten with "Event View" (calendar + event list) and "Shift View" (expandable events with green/red shift assignment indicators)
+- **StaffingPage**: Rewritten as Assignment view with 2-week mini calendar (red=vacancy, green=fully staffed) and unclaimed shifts table with importance ratings (Critical/High/Medium/Acceptable)
+
+**Bug fixed:**
+- React hooks ordering violation caused white screen on launch. `useEffect` for user menu close handler was after conditional early returns. Moved all hooks before conditionals.
+
+**Files changed:** `src/App.jsx`, `index.html`
+
+---
+
+## 2026-04-01 | Session 6 | Staffing flyout, employee card redesign, navy header
+
+Further refinements based on Tharindra's feedback. Staffing gets its own flyout submenu, Employees goes full-width with card layout, header goes navy.
+
+**Staffing restructure:**
+- Converted Staffing from a single page link to a flyout menu in NAV_SIDEBAR (matching Inventory pattern)
+- Sub-items: Dashboard, Scheduling, Assignment, Staffing Analytics
+- Created StaffingDashboardPage: 3-column landing with snapshot stats for each sub-section
+- Each column shows key metrics (upcoming events, unclaimed shifts, active staff) and links to full page
+- SchedulingPage simplified to render EventsPage directly
+- New routes: `staffing-dashboard`, `scheduling-cal`, `assignment`, `staffing-analytics`
+
+**Employee page redesign:**
+- Removed grid layout with Payroll sidebar — now full-width
+- Removed redundant "Employee Directory" header (DashSectionWrap wrapper)
+- "A to Z" tab: card grid with avatar, name/email, skill badges on left side, role badge (color-coded) on right
+- "By Skill" tab: employees grouped under skill name headers with role badges (matches By Role format)
+- "By Role" tab: unchanged
+- Employees sorted alphabetically in A to Z view
+
+**Header redesign:**
+- Background changed from white to navy (#00396b)
+- Collide SVG logo color changed to white
+- All header icons (menu toggle, search, bell, avatar chevron) changed to white
+- Search bar background changed to translucent white (rgba(255,255,255,0.15))
+- User menu toggle hover state changed to translucent white
+- Notification dot border color matched to navy background
+
+**Floating nav:**
+- Aligned to top-left (justify-start) instead of vertically centered (justify-center)
+
+**Bug fixed:**
+- `quantity_needed` vs `qty_needed` inconsistency: StaffingPage and StaffingDashboardPage were reading `r.quantity_needed` but the DB column is `qty_needed`. This caused vacancy counts to always default to `|| 1`. Fixed 3 occurrences.
+
+**Test data created:**
+- `seed.sql` — 5 employees (2 admins/team leads, 3 employees), 6 skills, 3 Vancouver March 2026 events with 4 role requirements each
+- Event 1 (Spring Pop-Up): 4/4 roles filled → green in calendar
+- Event 2 (Street Market): 2/4 filled → red (2 vacancies)
+- Event 3 (Fashion Expo): 1/4 filled → red (3 vacancies)
+- 5 total unclaimed shifts for Assignment view testing
+- Must be run in Supabase SQL Editor (RLS blocks anon inserts)
+
+**Files changed:** `src/App.jsx`, `seed.sql` (new)
+
+---
+
+## 2026-04-01 | Session 7 | Dashboard card redesign, real logo, inventory overhaul
+
+Major UI polish pass across Staffing Dashboard, Inventory Dashboard, Analytics page, and header branding. Focus on card interaction patterns, action button placement, and replacing placeholder logo with real brand asset.
+
+**Staffing Dashboard redesign:**
+- Per-event shift breakdown: each event row now shows Total / Claimed / Open columns with color-coded values (green for claimed, red for open vacancies)
+- Column headers added above event list for clarity
+- All 3 cards (Scheduling, Assignment, Staffing Analytics) now have dark navy border (`2px solid #00396b`)
+- Full-card hover glow effect (`box-shadow: 0 0 24px rgba(0,57,107,0.25)`)
+- Entire card is clickable — `cursor-pointer` with `onClick` navigating to the sub-page
+- Enter buttons (Enter Scheduling / Enter Assignment / Enter Staff Analytics) are now parallel across all 3 cards, pinned to bottom with `mt-auto`, 60% width, centered, with scale-up on hover
+- Removed old full-width bottom row buttons and radial gradient glow in favor of card-wide interaction
+
+**EventsPage toggle rename:**
+- "Event View" → "Calendar View"
+- "Shift View" → "Event View"
+
+**Inventory Dashboard overhaul:**
+- Restructured from 2-column (snapshot + sidebar) to 4 distinct cards: Inventory Snapshot, Last Inventory Update, Analytics, Projections
+- Each card has a blue hyperlink in the top-right corner:
+  - Snapshot: "Enter Inventory →"
+  - Last Update: "View Full Log →"
+  - Analytics: "Enter Analytics & Projection →"
+  - Projections: "Enter Projections →"
+- Analytics card: "Run Reports" and "Run Inventory Analysis" action buttons (placeholder/no-op)
+- Projections card: "Run Projection for New Event" and "Add Data to Inventory Projection Model" action buttons (placeholder/no-op)
+- Snapshot card fully clickable with hover glow
+- All cards have navy border and hover glow effect
+
+**Analytics page action buttons:**
+- Reports tab: "View Inventory Reports" button above content (placeholder)
+- Sales Forecast tab: "Project Future Event Revenue", "Project Future Event Inventory", "Update Projection Model" buttons above content (placeholder)
+
+**Real Collide logo:**
+- Replaced approximate SVG text-based CollideLogo with actual Collide shirt Logo SVG from brand guidelines (`/Logos/2026 Logo/Collide shirt Logo.svg`)
+- SVG contains 3 layers: body/flame (st2 → navy), cyan accents (st0 → #00ccf8/primary), "C" letter (st1 → white)
+- Dynamic color system: `color` prop controls body color, C letter auto-inverts for contrast (white body → navy C, navy body → white C), cyan accents always use BRAND.primary
+- Works correctly on both navy header (white body, navy C) and white backgrounds (navy body, white C)
+
+**Admin badge styling:**
+- Changed from translucent background with no border to solid `BRAND.primary` (#54cdf9) fill with navy text
+- Clean, visible pill on the navy header
+
+**Key decision:** Card interaction pattern standardized across Staffing and Inventory dashboards — entire card is clickable, with a visual "Enter" button as affordance but not the only click target. Hover glow signals interactivity.
+
+**Files changed:** `src/App.jsx`, `BUILD_STATE.md`, `BUILD_JOURNAL.md`, `PLAN.md`
+
+---

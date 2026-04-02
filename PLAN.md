@@ -4,35 +4,42 @@
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                   FRONTEND (Vite + React 19)         │
-│                   src/App.jsx (~5900 lines)           │
-│                                                       │
-│  ┌──────────┐  ┌───────────┐  ┌──────────┐          │
-│  │  Admin    │  │ Team Lead │  │ Employee │          │
-│  │ (19 pages)│  │ (subset)  │  │(My Shifts│          │
-│  │  Full     │  │ Schedule  │  │ Avail.   │          │
-│  │  Access   │  │ Inventory │  │ Notifs)  │          │
-│  └──────────┘  └───────────┘  └──────────┘          │
-│         │              │            │                 │
-│         └──────────────┼────────────┘                 │
-│                        │                              │
-│              ┌─────────▼──────────┐                   │
-│              │  NAV_TREE + RBAC   │                   │
-│              │  hasPageAccess()   │                   │
-│              └─────────┬──────────┘                   │
-│                        │ Hash routing (#/page)        │
-└────────────────────────┼──────────────────────────────┘
-                         │
-    ┌────────────────────┼────────────────────┐
-    │              SUPABASE CLOUD              │
-    │                                          │
-    │  ┌────────┐  ┌──────────┐  ┌─────────┐  │
-    │  │  Auth  │  │ Postgres │  │  Edge   │  │
-    │  │  JWT   │  │ 14 tables│  │Functions│  │
-    │  │  RLS   │  │ RLS+views│  │admin-   │  │
-    │  │        │  │ Realtime │  │ users   │  │
-    │  └────────┘  └──────────┘  └─────────┘  │
-    └─────────────────────────────────────────┘
+│              FRONTEND (Vite + React 19)                  │
+│              src/App.jsx (~7100 lines, monolithic)        │
+│              Montserrat font, Tailwind CDN               │
+│                                                           │
+│  ┌──────────┐  ┌───────────┐  ┌──────────┐              │
+│  │  Admin    │  │ Team Lead │  │ Employee │              │
+│  │ (all     │  │ (Staffing │  │(My Shifts│              │
+│  │  pages)  │  │ Employees │  │ Avail.   │              │
+│  │          │  │ Inventory)│  │ Notifs)  │              │
+│  └──────────┘  └───────────┘  └──────────┘              │
+│         │              │            │                     │
+│         └──────────────┼────────────┘                     │
+│                        │                                  │
+│  ┌─────────────────────▼──────────────────────┐          │
+│  │  NAV_SIDEBAR (floating FAB pills)          │          │
+│  │  + NAV_TREE (legacy, for hasPageAccess)    │          │
+│  │  Hash routing: { section, page }            │          │
+│  └─────────────────────┬──────────────────────┘          │
+│                        │                                  │
+│  ┌─────────────────────▼──────────────────────┐          │
+│  │  BRAND constants (white bg, navy accents)  │          │
+│  │  Navy #00396b | Light Blue #669ae4         │          │
+│  │  Bright Blue #54cdf9 | Accent #cfe2f3      │          │
+│  └────────────────────────────────────────────┘          │
+└──────────────────────────┬───────────────────────────────┘
+                           │
+    ┌──────────────────────┼──────────────────────┐
+    │              SUPABASE CLOUD                  │
+    │                                              │
+    │  ┌────────┐  ┌──────────┐  ┌─────────┐      │
+    │  │  Auth  │  │ Postgres │  │  Edge   │      │
+    │  │  JWT   │  │ 14+tables│  │Functions│      │
+    │  │  RLS   │  │ RLS+views│  │admin-   │      │
+    │  │        │  │ Realtime │  │ users   │      │
+    │  └────────┘  └──────────┘  └─────────┘      │
+    └─────────────────────────────────────────────┘
 ```
 
 ## Database Schema (14 Tables)
@@ -53,6 +60,39 @@
 | `historic_sales` | id, product_id, event_id, quantity_sold, revenue, event_type | Sales history for projections |
 | `shift_templates` | id, name + shift_template_entries (relation) | Reusable schedule templates |
 | `notifications` | id, user_id, type, message, read | System alerts |
+
+## Navigation Structure (v6.0)
+
+The sidebar uses floating FAB-style pill buttons (navy with white text) aligned to the top-left. Flyout submenus appear on hover for sections with children.
+
+| Nav Item | Type | Sub-items | Roles |
+|----------|------|-----------|-------|
+| Dashboard | Direct link | — | All |
+| Staffing | Flyout menu | Dashboard, Scheduling, Assignment, Staffing Analytics | All (Analytics: admin only) |
+| Employees | Direct link | — | Admin, Team Lead |
+| Inventory | Flyout menu | Dashboard, Products, Analytics, Projections | Admin, Team Lead (Analytics/Projections: admin only) |
+| Analytics | Direct link | 3 internal tabs: Reports, Sales Forecast, Event P&L | Admin, Team Lead |
+
+### Page Hierarchy
+
+- **Dashboard** → GatewayDashboard (4 gateway buttons + upcoming events + DashboardPage stats)
+- **Staffing**
+  - Dashboard → StaffingDashboardPage (3 clickable cards: Scheduling w/ per-event shift stats, Assignment w/ unclaimed shifts, Staffing Analytics w/ payroll chart; navy border, hover glow, parallel Enter buttons)
+  - Scheduling → EventsPage (Calendar View + Event View with expandable events)
+  - Assignment → StaffingPage (2-week mini calendar + unclaimed shifts table)
+  - Staffing Analytics → StaffingProjectionsPage
+- **Employees** → DirectorySkillsPage (3 tabs: A to Z cards, By Skill groups, By Role groups)
+- **Inventory**
+  - Dashboard → InventoryDashboardPage (4 cards: Snapshot w/ chart, Last Update w/ log, Analytics w/ action buttons, Projections w/ action buttons; blue hyperlinks in top-right of each card)
+  - Products → InventoryProductsPage (category tabs with charts)
+  - Analytics → InventoryAnalyticsPage
+  - Projections → InventoryProjectionsPage
+- **Analytics** → AnalyticsPage (3 tabs: Reports w/ "View Inventory Reports" button, Sales Forecast w/ projection action buttons, Event P&L)
+
+### Header
+- Navy blue background (#00396b) with real Collide shirt Logo SVG (dynamic color: white body on navy, cyan accents)
+- Search bar (⌘K command palette), notification bell, user avatar dropdown
+- Role badge next to logo: solid #54cdf9 fill with navy text
 
 ## Role Hierarchy & Permissions
 
@@ -263,33 +303,51 @@ src/
 
 ## Roadmap
 
-### v5.1 — Audit Fix Sprint (NEXT)
-- Split App.jsx into modules
-- Fix all bugs (A1-A12)
-- Fix all security issues (B1-B4)
-- Add React Router
-- Implement employee CRUD
+### v5.1–v5.3 — ✅ COMPLETED
+- Split App.jsx into modules (later consolidated back to monolith for speed)
+- Security fixes (removed demo credentials, fixed hardcoded URLs)
+- Dashboard/Reports/Payroll wired to real data
+- Employee profile editing
+- Hash-based URL routing
+- Deployed to Vercel
+- Google Places autocomplete for venues
 
-### v5.2 — Feature Completion
-- Clock-in/out system
-- Wire payroll to real data
-- CSV export
-- Shift templates UI
-- Shift date picker
-- Error boundaries
+### v5.4 — ✅ COMPLETED (Session 5)
+- Complete brand color migration (dark → white + navy)
+- Floating FAB sidebar with flyout menus
+- Navigation restructure (merged Scheduling→Staffing, removed Projections from nav)
+- Page merges: Analytics (Reports+Forecast+P&L), Inventory Dashboard, Gateway Dashboard
+- EventsPage + StaffingPage rewrite
+- Montserrat font
 
-### v6.0 — Production Hardening
-- Deploy to Vercel
-- Add Supabase schema to repo (migration files)
-- Proper state management (Context API or Zustand)
-- Loading skeletons instead of spinners
-- Comprehensive input validation
-- Audit logging
+### v6.0 — ✅ COMPLETED (Session 6)
+- Staffing flyout menu with Dashboard/Scheduling/Assignment/Analytics
+- Staffing Dashboard landing (3-column snapshots)
+- Employee page full-width with A to Z/By Skill/By Role tabs
+- Navy header with white logo
+- qty_needed bug fix
+- Test data seed script (seed.sql)
 
-### v7.0 — Advanced Features
+### v7.0 — ✅ COMPLETED (Session 7)
+- Dashboard card redesign: per-event shift stats, dark navy border, hover glow, full-card click, parallel Enter buttons
+- EventsPage toggle rename (Calendar View / Event View)
+- Inventory Dashboard overhaul: 4 cards with hyperlinks and action buttons
+- Analytics page action buttons (Reports, Sales Forecast tabs)
+- Real Collide shirt Logo SVG with dynamic color system
+- Admin badge: solid primary fill with navy text
+
+### v7.1 — IN PROGRESS
+- Run seed.sql to verify all views with real data
+- Wire placeholder action buttons to actual logic/modals
+- Payroll wired to shifts × hourly_rate with CRATax engine
+- Mobile-responsive layouts for on-site event use
+- Real-time notifications via Supabase Realtime
+
+### v8.0 — Future
 - Drag-and-drop schedule builder
-- Multi-province tax support
+- Multi-province tax support (BC, QC, AB)
 - Employee document storage
-- Email notifications via Supabase
+- Email notifications via Supabase Edge Functions
 - Batch import (CSV → employees/products)
 - PWA for offline event use
+- Clock-in/out system with actual_start/actual_end

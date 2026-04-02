@@ -1,8 +1,8 @@
 # Collide Staff Manager — Build State
 
-> **Last Updated:** 2026-03-30 16:19 EST
+> **Last Updated:** 2026-04-01 23:00 EST
 
-## Current Phase: v5.2+ — Deployed on Vercel, Google Places integrated
+## Current Phase: v7.0 — Dashboard Card Redesign, Real Logo, Inventory Overhaul
 
 ## Completed Features
 
@@ -69,17 +69,69 @@
 - [x] Session tokens for billing optimization
 - [x] Debounce (300ms) and click-outside-to-close on dropdown
 
+### v5.4 — Brand Color Overhaul & Navigation Restructure (Session 5)
+- [x] Complete brand color migration from dark glassmorphism to white + navy scheme
+- [x] BRAND constants updated: navy #00396b, lightBlue #669ae4, primary #54cdf9, accentBlue #cfe2f3
+- [x] Montserrat font loaded globally via Google Fonts
+- [x] Floating FAB-style sidebar: pill-shaped navy buttons on left with hover flyout menus
+- [x] Merged Scheduling/Staffing/Assignment into unified "Staffing" section with 3 tabs
+- [x] Merged Reports + Sales Forecast + Event P&L into unified "Analytics" page with 3 tabs
+- [x] Removed standalone "Projections" from nav (now under Inventory flyout + Analytics)
+- [x] Created Inventory Dashboard landing page with snapshot chart, quick-links, and "Enter Inventory" button
+- [x] Created Gateway Dashboard with 4 big buttons (Staffing, Employees, Inventory, Analytics) + upcoming events
+- [x] Dashboard stat cards updated: Upcoming Events, Unassigned Shifts, Payroll This Month, Last Inventory Update
+- [x] EventsPage restructured: "Event View" (calendar + event list) and "Shift View" (expandable events with green/red shift status)
+- [x] StaffingPage (Assignment): 2-week mini calendar (red=vacancy, green=staffed) + unclaimed shifts table with importance ratings
+- [x] DirectorySkillsPage: 3 tabs — Directory, By Skill, By Role (employees grouped under role headers with skill badges)
+- [x] Products page: category tabs with charts
+- [x] Fixed React hooks ordering violation (white screen bug)
+- [x] Fixed invisible text-white inputs on white background
+- [x] Fixed chart grid strokes invisible on white
+- [x] Fixed loading screen text color
+
+### v6.0 — Staffing Flyout, Employee Cards, Navy Header (Session 6)
+- [x] Staffing converted to flyout menu in sidebar (like Inventory) with sub-items: Dashboard, Scheduling, Assignment, Staffing Analytics
+- [x] Created Staffing Dashboard landing page: 3-column snapshot cards with stats (upcoming events, unclaimed shifts, active staff) that link into sub-pages
+- [x] Employees page restructured: full-width, no sidebar Payroll panel
+- [x] Employee "A to Z" tab: card grid with avatar, name, email, skill badges on left, role badge on right
+- [x] Employee "By Skill" tab: employees grouped under skill headers (matching By Role format)
+- [x] Employee "By Role" tab: unchanged from v5.4
+- [x] Header changed to navy blue background with white Collide SVG logo
+- [x] All header elements updated: white icons, white text, translucent hover states
+- [x] Floating nav aligned to top-left instead of vertically centered
+- [x] Fixed `qty_needed` vs `quantity_needed` bug — code was reading wrong column, defaulting to 1
+- [x] Created seed.sql with 5 test employees, 6 skills, 3 Vancouver March 2026 events, role requirements, and shifts
+- [x] Build verified passing
+
+### v7.0 — Dashboard Card Redesign, Real Logo, Inventory Overhaul (Session 7)
+- [x] StaffingDashboardPage: per-event shift stats (Total / Claimed / Open columns) with color-coded values
+- [x] StaffingDashboardPage: dark navy border on all 3 cards, full-card hover glow (box-shadow)
+- [x] StaffingDashboardPage: entire card clickable (cursor-pointer, onClick navigates to sub-page)
+- [x] StaffingDashboardPage: Enter buttons parallel across all 3 cards (pinned to bottom with mt-auto), 60% width, centered
+- [x] EventsPage toggle labels renamed: "Event View" → "Calendar View", "Shift View" → "Event View"
+- [x] InventoryDashboardPage: full restructure — 4 cards (Snapshot, Last Update, Analytics, Projections)
+- [x] InventoryDashboardPage: blue hyperlinks in top-right of each card (Enter Inventory, View Full Log, Enter Analytics & Projection, Enter Projections)
+- [x] InventoryDashboardPage: Analytics card action buttons — "Run Reports", "Run Inventory Analysis" (placeholder)
+- [x] InventoryDashboardPage: Projections card action buttons — "Run Projection for New Event", "Add Data to Inventory Projection Model" (placeholder)
+- [x] InventoryDashboardPage: Snapshot card fully clickable with hover glow
+- [x] AnalyticsPage: Reports tab — "View Inventory Reports" action button (placeholder)
+- [x] AnalyticsPage: Sales Forecast tab — "Project Future Event Revenue", "Project Future Event Inventory", "Update Projection Model" buttons (placeholder)
+- [x] CollideLogo replaced with real Collide shirt Logo SVG from brand guidelines (dynamic color: body + C letter invert based on background)
+- [x] Admin role badge: solid BRAND.primary (#54cdf9) fill with navy text (replaces translucent background)
+- [x] Build verified passing
+
 ## Files
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| `src/App.jsx` | ~6000+ | Main React app — all pages, auth, venues, Google Places, CRA tax engine |
+| `src/App.jsx` | ~7400+ | Main React app — all pages, auth, venues, Google Places, CRA tax engine, real Collide logo |
 | `src/constants/` | — | BRAND, TAX_CONFIG, NAV_TREE, EVENT_TYPE_DEFAULTS |
 | `src/lib/` | — | Tax engine, SIN encryption |
 | `src/utils/` | — | Formatters |
 | `src/components/` | — | 9 shared UI components |
 | `src/pages/` | — | 22 page components |
 | `supabase-schema.sql` | ~400+ | Full Supabase schema — 14+ tables, role-based RLS, helper functions, views, triggers |
+| `seed.sql` | ~160 | Test data seed script — 5 employees, 6 skills, 3 events, shifts |
 | `CLAUDE.md` | — | Session boot instructions, architecture decisions, gotchas |
 | `BUILD_STATE.md` | — | This file — live progress snapshot |
 | `BUILD_JOURNAL.md` | — | Append-only decision log |
@@ -87,7 +139,8 @@
 
 ## What's Next
 
-1. **Client-side SIN encryption** — AES-256-GCM via Web Crypto API before storing
-2. **Mobile-responsive employee portal** — Touch-friendly for on-site use at events
-3. **Real-time notifications** — Supabase Realtime for schedule publishes and shift reminders
-4. **Google API key restriction** — Restrict to collide-staff-manager.vercel.app domain in Google Cloud Console
+1. **Run seed.sql** — Paste into Supabase SQL Editor to populate test data for all views
+2. **Wire placeholder buttons** — Connect "Run Reports", "Run Projection", "Run Inventory Analysis" to actual logic/modals
+3. **Payroll wired to shifts** — Calculate pay from shifts × hourly_rate using CRATax engine
+4. **Mobile-responsive employee portal** — Touch-friendly for on-site use at events
+5. **Real-time notifications** — Supabase Realtime for schedule publishes and shift reminders
