@@ -8,10 +8,11 @@
  * supabase.channel — stubbed (no realtime, uses polling instead)
  */
 
-const DATA_API_URL = import.meta.env.VITE_NEON_DATA_API_URL || '';
 const AUTH_URL = import.meta.env.VITE_NEON_AUTH_URL || '';
 const IS_LOCAL = typeof window !== 'undefined' && window.location.hostname === 'localhost';
 const AUTH_ENDPOINT = IS_LOCAL ? AUTH_URL : '/api/auth';
+// All DB queries go through /api/query (serverless driver, no JWT needed)
+const QUERY_URL = '/api/query';
 const SESSION_KEY = 'collide_neon_session';
 
 // ── Session state ──
@@ -37,76 +38,46 @@ function notifyAuthListeners(event) {
   });
 }
 
-// ── PostgREST query builder (mimics supabase.from()) ──
+// ── Query builder (mimics supabase.from() — routes through /api/query) ──
 function buildQuery(table) {
   let method = 'GET';
   let body = null;
-  let params = new URLSearchParams();
-  let headers = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  };
-  let returnData = true;
+  let filters = new URLSearchParams();
   let isSingle = false;
+  let selectCols = '*';
+  let orderStr = '';
+  let limitN = '';
 
-  // Add auth token
-  if (currentSession?.access_token) {
-    headers['Authorization'] = `Bearer ${currentSession.access_token}`;
-  }
+  filters.set('table', table);
 
   const chain = {
     select(columns = '*') {
       method = 'GET';
-      params.set('select', columns);
+      selectCols = columns;
       return chain;
     },
-    insert(data) {
-      method = 'POST';
-      body = data;
-      headers['Prefer'] = 'return=representation';
-      return chain;
-    },
-    update(data) {
-      method = 'PATCH';
-      body = data;
-      headers['Prefer'] = 'return=representation';
-      return chain;
-    },
-    upsert(data) {
-      method = 'POST';
-      body = data;
-      headers['Prefer'] = 'resolution=merge-duplicates,return=representation';
-      return chain;
-    },
-    delete() {
-      method = 'DELETE';
-      headers['Prefer'] = 'return=representation';
-      return chain;
-    },
-    eq(col, val) {
-      params.append(col, `eq.${val}`);
-      return chain;
-    },
-    neq(col, val) { params.append(col, `neq.${val}`); return chain; },
-    gt(col, val) { params.append(col, `gt.${val}`); return chain; },
-    gte(col, val) { params.append(col, `gte.${val}`); return chain; },
-    lt(col, val) { params.append(col, `lt.${val}`); return chain; },
-    lte(col, val) { params.append(col, `lte.${val}`); return chain; },
-    in(col, vals) { params.append(col, `in.(${vals.join(',')})`); return chain; },
-    is(col, val) { params.append(col, `is.${val}`); return chain; },
-    order(col, opts = {}) {
-      params.append('order', `${col}.${opts.ascending === false ? 'desc' : 'asc'}`);
-      return chain;
-    },
-    limit(n) { params.set('limit', n); return chain; },
-    single() { isSingle = true; headers['Accept'] = 'application/vnd.pgrst.object+json'; return chain; },
+    insert(data) { method = 'POST'; body = data; return chain; },
+    update(data) { method = 'PATCH'; body = data; return chain; },
+    upsert(data) { method = 'POST'; body = data; return chain; },
+    delete() { method = 'DELETE'; return chain; },
+    eq(col, val) { filters.append(col, `eq.${val}`); return chain; },
+    neq(col, val) { filters.append(col, `neq.${val}`); return chain; },
+    gt(col, val) { filters.append(col, `gt.${val}`); return chain; },
+    gte(col, val) { filters.append(col, `gte.${val}`); return chain; },
+    lt(col, val) { filters.append(col, `lt.${val}`); return chain; },
+    lte(col, val) { filters.append(col, `lte.${val}`); return chain; },
+    in(col, vals) { filters.append(col, `in.(${vals.join(',')})`); return chain; },
+    is(col, val) { filters.append(col, `is.${val}`); return chain; },
+    order(col, opts = {}) { filters.set('order', `${col}.${opts.ascending === false ? 'desc' : 'asc'}`); return chain; },
+    limit(n) { filters.set('limit', n); return chain; },
+    single() { isSingle = true; return chain; },
     maybeSingle() { isSingle = true; return chain; },
     then(resolve, reject) {
-      const qs = params.toString();
-      const url = `${DATA_API_URL}/${table}${qs ? '?' + qs : ''}`;
+      if (method === 'GET') filters.set('select', selectCols);
+      const url = `${QUERY_URL}?${filters.toString()}`;
       fetch(url, {
         method,
-        headers,
+        headers: { 'Content-Type': 'application/json' },
         ...(body ? { body: JSON.stringify(body) } : {}),
       })
         .then(async (res) => {
@@ -117,8 +88,8 @@ function buildQuery(table) {
           const text = await res.text();
           if (!text) return resolve({ data: isSingle ? null : [], error: null, count: 0 });
           const data = JSON.parse(text);
-          const count = res.headers.get('content-range')?.split('/')[1];
-          return resolve({ data, error: null, count: count ? parseInt(count) : null });
+          if (isSingle) return resolve({ data: Array.isArray(data) ? data[0] || null : data, error: null, count: null });
+          return resolve({ data, error: null, count: Array.isArray(data) ? data.length : null });
         })
         .catch((err) => {
           if (reject) reject(err);
