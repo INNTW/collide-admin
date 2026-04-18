@@ -1,20 +1,18 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseAuthAdapter } from '@neondatabase/neon-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const authUrl = import.meta.env.VITE_NEON_AUTH_URL;
+const dataApiUrl = import.meta.env.VITE_NEON_DATA_API_URL;
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY environment variables');
+if (!authUrl || !dataApiUrl) {
+  console.warn('Missing VITE_NEON_AUTH_URL or VITE_NEON_DATA_API_URL — database features will not work');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient({
   auth: {
-    lock: async (_name, _acquireTimeout, fn) => {
-      // Bypass Web Locks API which crashes on some mobile browsers
-      return await fn();
-    },
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
+    adapter: SupabaseAuthAdapter(),
+    url: authUrl || '',
+  },
+  dataApi: {
+    url: dataApiUrl || '',
   },
 });
